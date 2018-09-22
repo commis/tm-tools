@@ -1,9 +1,11 @@
 package types
 
 import (
+	"bytes"
 	"time"
 
 	gco "github.com/tendermint/go-crypto"
+	wire "github.com/tendermint/go-wire"
 	cmn "github.com/tendermint/tmlibs/common"
 )
 
@@ -12,9 +14,18 @@ type BlockID struct {
 	PartsHeader PartSetHeader `json:"parts"`
 }
 
+func (blockID BlockID) Equals(other BlockID) bool {
+	return bytes.Equal(blockID.Hash, other.Hash) &&
+		blockID.PartsHeader.Equals(other.PartsHeader)
+}
+
 type PartSetHeader struct {
 	Total int          `json:"total"`
 	Hash  cmn.HexBytes `json:"hash"`
+}
+
+func (psh PartSetHeader) Equals(other PartSetHeader) bool {
+	return psh.Total == other.Total && bytes.Equal(psh.Hash, other.Hash)
 }
 
 type Data struct {
@@ -46,6 +57,70 @@ type Vote struct {
 	Type             byte          `json:"type"`
 	BlockID          BlockID       `json:"block_id"` // zero if vote is nil.
 	Signature        gco.Signature `json:"signature"`
+}
+
+func (vote *Vote) SignBytes(chainID string) []byte {
+	bz, err := wire.MarshalJSON(CanonicalJSONOnceVote{
+		chainID,
+		CanonicalVote(vote),
+	})
+	if err != nil {
+		panic(err)
+	}
+	return bz
+}
+
+type CanonicalJSONOnceVote struct {
+	ChainID string            `json:"chain_id"`
+	Vote    CanonicalJSONVote `json:"vote"`
+}
+
+type CanonicalJSONVote struct {
+	BlockID   CanonicalJSONBlockID `json:"block_id"`
+	Height    int64                `json:"height"`
+	Round     int                  `json:"round"`
+	Timestamp string               `json:"timestamp"`
+	Type      byte                 `json:"type"`
+}
+
+type CanonicalJSONBlockID struct {
+	Hash        cmn.HexBytes               `json:"hash,omitempty"`
+	PartsHeader CanonicalJSONPartSetHeader `json:"parts,omitempty"`
+}
+
+func CanonicalVote(vote *Vote) CanonicalJSONVote {
+	return CanonicalJSONVote{
+		BlockID:   CanonicalBlockID(vote.BlockID),
+		Height:    vote.Height,
+		Round:     vote.Round,
+		Timestamp: CanonicalTime(vote.Timestamp),
+		Type:      vote.Type,
+	}
+}
+
+const TimeFormat = wire.RFC3339Millis
+
+func CanonicalTime(t time.Time) string {
+	return t.UTC().Format(TimeFormat)
+}
+
+func CanonicalBlockID(blockID BlockID) CanonicalJSONBlockID {
+	return CanonicalJSONBlockID{
+		Hash:        blockID.Hash,
+		PartsHeader: CanonicalPartSetHeader(blockID.PartsHeader),
+	}
+}
+
+func CanonicalPartSetHeader(psh PartSetHeader) CanonicalJSONPartSetHeader {
+	return CanonicalJSONPartSetHeader{
+		psh.Hash,
+		psh.Total,
+	}
+}
+
+type CanonicalJSONPartSetHeader struct {
+	Hash  cmn.HexBytes `json:"hash"`
+	Total int          `json:"total"`
 }
 
 type Block struct {

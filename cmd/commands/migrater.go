@@ -1,7 +1,7 @@
 package commands
 
 import (
-	cvt "github.com/commis/tm-tools/libs/convert"
+	"github.com/commis/tm-tools/libs/op"
 	"github.com/spf13/cobra"
 	cmn "github.com/tendermint/tmlibs/common"
 )
@@ -28,7 +28,7 @@ func migrateData(cmd *cobra.Command, args []string) error {
 	cmn.EnsureDir(newData+"/config", 0755)
 	cmn.EnsureDir(newData+"/data", 0755)
 
-	convert := cvt.Converter{}
+	convert := op.TmDataStore{}
 	convert.OnStart(oldData, newData)
 	defer convert.OnStop()
 
@@ -38,7 +38,7 @@ func migrateData(cmd *cobra.Command, args []string) error {
 	convert.OnPrivValidatorJSON(oldData+"/config/priv_validator.json", newData+"/config/priv_validator.json")
 
 	// convert data
-	convert.TotalHeight()
+	convert.TotalHeight(false)
 	convert.OnBlockStore(sHeight)
 	convert.OnEvidence()
 

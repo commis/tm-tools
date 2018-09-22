@@ -17,6 +17,14 @@ var (
 	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 )
 
+func init() {
+	registerFlagsRootCmd(RootCmd)
+}
+
+func registerFlagsRootCmd(cmd *cobra.Command) {
+	cmd.PersistentFlags().String("log_level", config.LogLevel, "Log level")
+}
+
 var RootCmd = &cobra.Command{
 	Use:   "tm_tools",
 	Short: "Tendermint upgrade tools in Go",
@@ -24,10 +32,7 @@ var RootCmd = &cobra.Command{
 		if cmd.Name() == VersionCmd.Name() {
 			return nil
 		}
-		/*config, err = ParseConfig()
-		if err != nil {
-			return err
-		}*/
+
 		logger, err = flags.ParseLogLevel(config.LogLevel, logger, cfg.DefaultLogLevel())
 		if err != nil {
 			return err

@@ -6,28 +6,27 @@
 
 * **migrate**: tendermint data from `v0.18.0` to `v0.23.1`
 * **view**: view tendermint data in `blockstore.db` or `state.db`
-* **reset**: reset tendermint data block height
+* **recover**: recover tendermint block height
 
 ## tm_tools migrate
 ```
-Usage: tm_migrator -old tmroot -new tmroot -priv priv_dir [-s startHeight]
+Usage: tm_tools migrate -old tmroot -new tmroot [-h startHeight]
 
 	-old tmroot: dir of old tendermint root
 	-new tmroot: dir of new tendermint root to store converted data
-	-priv priv_dir: dir to place other validators's old `priv_validator.json`
 	-s startHeight: from which height to convert tendermint data, default is `1`
 ```
 
 ## tm_tools view
 ```
-Usage: $ tm_view -db /path/of/db [-a get|getall|block] [-q key] [-d] [-v new|old] [-t height]
+Usage: $ tm_tools view -db /path/of/db [-a get|getall|block] [-q key] [-d] [-v new|old] [-h height]
 
-// -db : db，Note: the db path cannot end with "/"
-// [-a get|getall|block]： read the value of a key | output all keyes | read block info
-// [-q key] ：key format, please see following "Tendermint data" section
-// [-d]: whether decode value，default is "false"
-// [-v new|old] ：new(0.23.1), old(0.18.0), default is "new"
-// [-t height]: block height，workes with "-a block" arg to read block info at height "N"
+    -db : db，Note: the db path cannot end with "/"
+    [-a get|getall|block]： read the value of a key | output all keyes | read block info
+    [-q key] ：key format, please see following "Tendermint data" section
+    [-d]: whether decode value，default is "false"
+    [-v new|old] ：new(0.23.1), old(0.18.0), default is "new"
+    [-h height]: block height，workes with "-a block" arg to read block info at height "N"
 
 examples：
 $ tm_view -db /path/of/blockstore.db -a getall 
@@ -54,7 +53,7 @@ $ tm_view -db /path/of/state.db -q "stateKey" -d -v old
 | `C:{height-1}`        | raw byte of block commit      | C:0, SC:31                  | 
 
 
-## tm_tools reset
+## tm_tools recover
 ```
 Allen@MacBook-Pro:~ ls -l ~/.tendermint.v0.23.1/data/
 drwxr-xr-x  8 Allen  staff  272 Oct 15 20:23 blockstore.db

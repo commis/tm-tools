@@ -22,6 +22,14 @@ type State struct {
 	AppHash                          []byte
 }
 
+func (s State) Bytes() []byte {
+	bz, err := wire.MarshalBinary(s)
+	if err != nil {
+		panic(err)
+	}
+	return bz
+}
+
 // ABCIResponse
 type ABCIResponses struct {
 	DeliverTx []*abci.ResponseDeliverTx

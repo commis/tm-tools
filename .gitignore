@@ -10,4 +10,7 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
-/bin/
+/bin
+/tm-data/result
+/tm-data/v0.18.0/*
+/tm-data/v0.23.1/*

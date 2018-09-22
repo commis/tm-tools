@@ -6,7 +6,8 @@ import (
 
 	"github.com/commis/tm-tools/libs/util"
 	his "github.com/commis/tm-tools/oldver/types"
-	wire "github.com/tendermint/go-wire"
+	"github.com/tendermint/go-wire"
+	"github.com/tendermint/tendermint/evidence"
 	"github.com/tendermint/tendermint/libs/db"
 	dbm "github.com/tendermint/tmlibs/db"
 )
@@ -31,8 +32,14 @@ func NewEvidence(ldb dbm.DB, ndb db.DB, prefixKey string) {
 	for ; iter.Valid(); iter.Next() {
 		var ei his.EvidenceInfo
 		wire.ReadBinaryBytes(iter.Value(), &ei)
-		key := GetEvidenceKey(prefixKey, ei.Evidence)
-		util.SaveNewEvidence(batch, key, &ei)
+		key := GetEvidenceKey(prefixKey, ei.Evidence.Height(), ei.Evidence.Hash())
+
+		newEi := evidence.EvidenceInfo{
+			Committed: ei.Committed,
+			Priority:  ei.Priority,
+			Evidence:  CvtNewEvidence(ei.Evidence)}
+
+		util.SaveNewEvidence(batch, key, &newEi)
 		if cnt%limit == 0 {
 			log.Printf("batch write evidence %v\n", cnt)
 			batch.Write()
@@ -45,8 +52,8 @@ func NewEvidence(ldb dbm.DB, ndb db.DB, prefixKey string) {
 	}
 }
 
-func GetEvidenceKey(prefixKey string, evidence his.Evidence) []byte {
-	return _key("%s/%s/%X", prefixKey, bE(evidence.Height()), evidence.Hash())
+func GetEvidenceKey(prefixKey string, height int64, hash []byte) []byte {
+	return _key("%s/%s/%X", prefixKey, bE(height), hash)
 }
 
 // big endian padded hex

@@ -1,20 +1,30 @@
 package convert
 
 import (
+	"encoding/json"
+	"log"
+
 	"github.com/commis/tm-tools/libs/util"
-	oldver "github.com/commis/tm-tools/oldver"
 	his "github.com/commis/tm-tools/oldver/types"
-	gco "github.com/tendermint/go-crypto"
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
+	oldtype "github.com/commis/tm-tools/oldver/types"
+	"github.com/tendermint/go-wire"
 	"github.com/tendermint/tendermint/libs/db"
 	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
+	cmn "github.com/tendermint/tmlibs/common"
 	dbm "github.com/tendermint/tmlibs/db"
 )
 
+func SaveOldBlockStoreStateJson(db dbm.DB, bsj his.BlockStoreStateJSON) {
+	bytes, err := json.Marshal(bsj)
+	if err != nil {
+		cmn.PanicSanity(cmn.Fmt("Could not marshal state bytes: %v", err))
+	}
+	db.SetSync([]byte(util.BlockStoreKey), bytes)
+}
+
 func InitState(ldb dbm.DB) *state.State {
-	oState := oldver.LoadOldState(ldb)
+	oState := LoadOldState(ldb)
 	retState := &state.State{}
 	retState.ChainID = oState.ChainID
 	retState.LastBlockHeight = oState.LastBlockHeight
@@ -30,6 +40,21 @@ func InitState(ldb dbm.DB) *state.State {
 	retState.AppHash = oState.AppHash
 
 	return retState
+}
+
+func LoadOldState(ldb dbm.DB) *oldtype.State {
+	buf := ldb.Get([]byte(util.StateKey))
+	if len(buf) == 0 {
+		return nil
+	}
+
+	s := &oldtype.State{}
+	err := wire.UnmarshalBinary(buf, s)
+	if err != nil {
+		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
+		cmn.Exit(cmn.Fmt(`LoadState: Data has been corrupted or its spec has changed:%v\n`, err))
+	}
+	return s
 }
 
 func SaveState(ldb db.DB, lastBlockID *types.BlockID, nState *state.State) {
@@ -53,26 +78,19 @@ func NewConsensusParams(old *his.ConsensusParams) types.ConsensusParams {
 	}
 }
 
-func NewGenesisDoc(old *his.GenesisDoc) *types.GenesisDoc {
-	newGenesisDoc := &types.GenesisDoc{
-		AppHash:     old.AppHash.Bytes(),
-		ChainID:     old.ChainID,
-		GenesisTime: old.GenesisTime,
-		Validators:  []types.GenesisValidator{},
-	}
-	for _, val := range old.Validators {
-		one := types.GenesisValidator{}
-		one.Power = val.Power
-		one.Name = val.Name
-		one.PubKey = NewPubKey(val.PubKey)
+func ConvertValidatorsInfo(old *his.ValidatorsInfo) *state.ValidatorsInfo {
+	valInfo := new(state.ValidatorsInfo)
+	valInfo.ValidatorSet = NewValidatorSet(old.ValidatorSet)
+	valInfo.LastHeightChanged = old.LastHeightChanged
 
-		newGenesisDoc.Validators = append(newGenesisDoc.Validators, one)
-	}
-
-	return newGenesisDoc
+	return valInfo
 }
 
 func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
+	if oValidatorSet == nil {
+		return nil
+	}
+
 	nValidatorSet := &types.ValidatorSet{
 		Validators: []*types.Validator{},
 	}
@@ -82,7 +100,7 @@ func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
 		one := &types.Validator{}
 		one.Accum = val.Accum
 		one.Address = val.Address.Bytes()
-		one.PubKey = NewPubKey(val.PubKey)
+		one.PubKey = CvtNewPubKey(val.PubKey)
 		one.VotingPower = val.VotingPower
 
 		nValidatorSet.Validators = append(nValidatorSet.Validators, one)
@@ -91,7 +109,7 @@ func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
 	// Proposer
 	nValidatorSet.Proposer = &types.Validator{
 		Address:     oValidatorSet.Proposer.Address.Bytes(),
-		PubKey:      NewPubKey(oValidatorSet.Proposer.PubKey),
+		PubKey:      CvtNewPubKey(oValidatorSet.Proposer.PubKey),
 		VotingPower: oValidatorSet.Proposer.VotingPower,
 		Accum:       oValidatorSet.Proposer.Accum,
 	}
@@ -99,31 +117,110 @@ func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
 	return nValidatorSet
 }
 
-func NewPubKey(old gco.PubKey) crypto.PubKey {
-	oBytes := old.Unwrap().(gco.PubKeyEd25519)
-	nBytes := ed25519.PubKeyEd25519{}
-	for i, bt := range oBytes {
-		nBytes[i] = bt
+func LoadOldABCIResponse(db dbm.DB, height int64) *his.ABCIResponses {
+	buf := db.Get(util.CalcABCIResponsesKey(height))
+	if len(buf) == 0 {
+		return nil
 	}
-	//fmt.Println(oBytes.String())
-	//fmt.Println(nBytes.String())
-	return nBytes
+
+	abciResponses := new(his.ABCIResponses)
+	err := wire.UnmarshalBinary(buf, abciResponses)
+	if err != nil {
+		//fmt.Printf("LoadABCIResponses: Data has been corrupted or its spec has changed: %v\n", err)
+		return nil
+	}
+
+	return abciResponses
 }
 
-func NewPrivKey(old gco.PrivKey) crypto.PrivKey {
-	oBytes := old.Unwrap().(gco.PrivKeyEd25519)
-	nBytes := ed25519.PrivKeyEd25519{}
-	for i, bt := range oBytes {
-		nBytes[i] = bt
+func SaveNewABCIResponse(ldb dbm.DB, ndb db.DB, height int64) {
+	abciResponses := LoadOldABCIResponse(ldb, height)
+	if abciResponses != nil {
+		ndb.SetSync(util.CalcABCIResponsesKey(height), abciResponses.Bytes())
 	}
-	return nBytes
 }
 
-func NewSignature(old gco.Signature) []byte {
-	oBytes := old.Unwrap().(gco.SignatureEd25519)
-	nBytes := make([]byte, len(oBytes))
-	for i, bt := range oBytes {
-		nBytes[i] = bt
+func DeleteABCIResponse(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
+	key := util.CalcABCIResponsesKey(height)
+	if newVer {
+		if ndb.Has(key) {
+			ndb.DeleteSync(key)
+		}
+	} else {
+		if ldb.Has(key) {
+			ldb.DeleteSync(key)
+		}
 	}
-	return nBytes
+}
+
+func LoadOldConsensusParamsInfo(db dbm.DB, height int64) *his.ConsensusParamsInfo {
+	buf := db.Get(util.CalcConsensusParamsKey(height))
+	if len(buf) == 0 {
+		return nil
+	}
+
+	paramsInfo := new(his.ConsensusParamsInfo)
+	err := wire.UnmarshalBinary(buf, paramsInfo)
+	if err != nil {
+		return nil
+	}
+
+	return paramsInfo
+}
+
+func SaveNewConsensusParams(ldb dbm.DB, ndb db.DB, height int64) {
+	paramsInfo := LoadOldConsensusParamsInfo(ldb, height)
+	if paramsInfo != nil {
+		ndb.SetSync(util.CalcConsensusParamsKey(height), paramsInfo.Bytes())
+	}
+}
+
+func DeleteConsensusParam(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
+	key := util.CalcConsensusParamsKey(height)
+	if newVer {
+		if ndb.Has(key) {
+			ndb.DeleteSync(key)
+		}
+	} else {
+		if ldb.Has(key) {
+			ldb.DeleteSync(key)
+		}
+	}
+}
+
+func LoadOldValidatorsInfo(db dbm.DB, height int64) *his.ValidatorsInfo {
+	buf := db.Get(util.CalcValidatorsKey(height))
+	if len(buf) == 0 {
+		return nil
+	}
+
+	v := new(his.ValidatorsInfo)
+	err := wire.UnmarshalBinary(buf, v)
+	if err != nil {
+		log.Printf("LoadValidators: Data has been corrupted or its spec has changed: %v\n", err)
+		return nil
+	}
+
+	return v
+}
+
+func SaveNewValidators(ldb dbm.DB, ndb db.DB, height int64) {
+	valInfo := LoadOldValidatorsInfo(ldb, height)
+	if valInfo != nil {
+		nValInfo := ConvertValidatorsInfo(valInfo)
+		ndb.SetSync(util.CalcValidatorsKey(height), nValInfo.Bytes())
+	}
+}
+
+func DeleteValidator(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
+	key := util.CalcValidatorsKey(height)
+	if newVer {
+		if ndb.Has(key) {
+			ndb.DeleteSync(key)
+		}
+	} else {
+		if ldb.Has(key) {
+			ldb.DeleteSync(key)
+		}
+	}
 }
