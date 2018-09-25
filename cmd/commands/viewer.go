@@ -183,14 +183,10 @@ func (d *DbHandler) loadGenesisDoc() {
 
 	if d.OldDbm != nil {
 		genDoc := cvt.LoadOldGenesisDoc(d.OldDbm)
-		if genDoc != nil {
-			res, _ = json.Marshal(genDoc)
-		}
+		res, _ = json.Marshal(genDoc)
 	} else if d.NewDbm != nil {
 		genDoc := util.LoadNewGenesisDoc(d.NewDbm)
-		if genDoc != nil {
-			res, _ = json.Marshal(genDoc)
-		}
+		res, _ = json.Marshal(genDoc)
 	}
 	fmt.Println(string(res))
 }

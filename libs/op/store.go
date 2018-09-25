@@ -30,32 +30,45 @@ func (c *TmDataStore) OnStart(oldPath, newPath string) {
 		c.oTrustDb = dbm.NewDB("trusthistory", dbm.GoLevelDBBackend, oldPath+"/data")
 	}
 
-	c.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, newPath+"/data")
-	c.nStateDb = db.NewDB("state", db.LevelDBBackend, newPath+"/data")
-	c.nEvidenceDb = db.NewDB("evidence", db.LevelDBBackend, newPath+"/data")
-	c.nTrustDb = db.NewDB("trusthistory", db.GoLevelDBBackend, newPath+"/data")
+	if newPath != "" {
+		c.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, newPath+"/data")
+		c.nStateDb = db.NewDB("state", db.LevelDBBackend, newPath+"/data")
+		c.nEvidenceDb = db.NewDB("evidence", db.LevelDBBackend, newPath+"/data")
+		c.nTrustDb = db.NewDB("trusthistory", db.GoLevelDBBackend, newPath+"/data")
+	}
 }
 
 func (c *TmDataStore) OnStop() {
-	c.close(c.oBlockDb)
-	c.close(c.oStateDb)
-	c.close(c.oEvidenceDb)
-	c.close(c.oTrustDb)
+	c.close1(c.oBlockDb)
+	c.close1(c.oStateDb)
+	c.close1(c.oEvidenceDb)
+	c.close1(c.oTrustDb)
 
-	c.nBlockDb.Close()
-	c.nStateDb.Close()
-	c.nEvidenceDb.Close()
-	c.nTrustDb.Close()
+	c.close2(c.nBlockDb)
+	c.close2(c.nStateDb)
+	c.close2(c.nEvidenceDb)
+	c.close2(c.nTrustDb)
 }
 
-func (c *TmDataStore) close(ldb dbm.DB) {
+func (c *TmDataStore) close1(ldb dbm.DB) {
+	if ldb != nil {
+		ldb.Close()
+	}
+}
+
+func (c *TmDataStore) close2(ldb db.DB) {
 	if ldb != nil {
 		ldb.Close()
 	}
 }
 
 func (c *TmDataStore) OnGenesisJSON(oPath, nPath string) {
-	cvt.UpgradeGenesisJSON(c.nStateDb, oPath, nPath)
+	cvt.UpgradeGenesisJSON(oPath, nPath)
+
+	genDoc, err := types.GenesisDocFromFile(nPath)
+	if err == nil {
+		util.SaveNewGenesisDoc(c.nStateDb, genDoc)
+	}
 }
 
 func (c *TmDataStore) OnPrivValidatorJSON(oPath, nPath string) {
@@ -96,10 +109,10 @@ func (c *TmDataStore) OnBlockStore(startHeight int64) {
 		cnt++
 
 		nBlock := cvt.NewBlockFromOld(c.oBlockDb, index, lastBlockID, c.newState)
+		seenCommit := cvt.NewSeenCommit(c.oBlockDb, index, c.newState)
+
 		blockParts := nBlock.MakePartSet(c.newState.ConsensusParams.BlockPartSizeBytes)
 		nMeta := types.NewBlockMeta(nBlock, blockParts)
-		// seen this BlockId's commit
-		seenCommit := cvt.NewSeenCommit(c.oBlockDb, index, &nMeta.BlockID, c.newState)
 
 		c.saveBlock(batch, nBlock, nMeta, seenCommit)
 		if cnt%limit == 0 {
@@ -155,12 +168,16 @@ func (c *TmDataStore) OnBlockRecover(newVersion bool, resetHeight int64) {
 	}
 }
 
+func (c *TmDataStore) OnEvidenceRecover(newVersion bool, resetHeight int64) {
+
+}
+
 func (c *TmDataStore) resetOldBlock(height int64) {
 	state := c.getOldState(height)
 	util.SaveOldState(c.oStateDb, state)
 
 	for i := height + 1; i <= c.totalHeight; i++ {
-		block := util.LoadNewBlock(c.nBlockDb, i)
+		block := cvt.LoadOldBlock(c.oBlockDb, i)
 		c.deleteOldBlock(block, state)
 	}
 	json := his.BlockStoreStateJSON{Height: height}
@@ -230,7 +247,7 @@ func (c *TmDataStore) getNewState(height int64) *state.State {
 	return state
 }
 
-func (c *TmDataStore) deleteOldBlock(block *types.Block, state *his.State) {
+func (c *TmDataStore) deleteOldBlock(block *his.Block, state *his.State) {
 	// block
 	util.DeleteBlockMeta(false, c.oBlockDb, c.nBlockDb, block.Height)
 	util.DeleteOldBlockParts(c.oBlockDb, block, state)

@@ -34,7 +34,7 @@ func InitState(ldb dbm.DB) *state.State {
 	retState.Validators = NewValidatorSet(oState.Validators)
 	retState.LastValidators = NewValidatorSet(oState.LastValidators)
 	retState.LastHeightValidatorsChanged = oState.LastHeightValidatorsChanged
-	retState.ConsensusParams = NewConsensusParams(&oState.ConsensusParams)
+	retState.ConsensusParams = CvtConsensusParams(&oState.ConsensusParams)
 	retState.LastHeightConsensusParamsChanged = oState.LastHeightConsensusParamsChanged
 	retState.LastResultsHash = oState.LastResultsHash
 	retState.AppHash = oState.AppHash
@@ -67,23 +67,6 @@ func NewBlockID(old *his.BlockID) types.BlockID {
 		Hash:        old.Hash.Bytes(),
 		PartsHeader: types.PartSetHeader{Total: old.PartsHeader.Total, Hash: old.PartsHeader.Hash.Bytes()},
 	}
-}
-
-func NewConsensusParams(old *his.ConsensusParams) types.ConsensusParams {
-	return types.ConsensusParams{
-		BlockSize:      types.BlockSize{MaxBytes: old.BlockSize.MaxBytes, MaxTxs: old.BlockSize.MaxTxs, MaxGas: old.BlockSize.MaxGas},
-		TxSize:         types.TxSize{MaxBytes: old.TxSize.MaxBytes, MaxGas: old.TxSize.MaxGas},
-		BlockGossip:    types.BlockGossip{BlockPartSizeBytes: old.BlockGossip.BlockPartSizeBytes},
-		EvidenceParams: types.EvidenceParams{MaxAge: old.EvidenceParams.MaxAge},
-	}
-}
-
-func ConvertValidatorsInfo(old *his.ValidatorsInfo) *state.ValidatorsInfo {
-	valInfo := new(state.ValidatorsInfo)
-	valInfo.ValidatorSet = NewValidatorSet(old.ValidatorSet)
-	valInfo.LastHeightChanged = old.LastHeightChanged
-
-	return valInfo
 }
 
 func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
@@ -144,11 +127,11 @@ func DeleteABCIResponse(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := util.CalcABCIResponsesKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.DeleteSync(key)
+			ndb.Delete(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.DeleteSync(key)
+			ldb.Delete(key)
 		}
 	}
 }
@@ -171,7 +154,8 @@ func LoadOldConsensusParamsInfo(db dbm.DB, height int64) *his.ConsensusParamsInf
 func SaveNewConsensusParams(ldb dbm.DB, ndb db.DB, height int64) {
 	paramsInfo := LoadOldConsensusParamsInfo(ldb, height)
 	if paramsInfo != nil {
-		ndb.SetSync(util.CalcConsensusParamsKey(height), paramsInfo.Bytes())
+		nParamsInfo := CvtConsensusParamsInfo(paramsInfo)
+		ndb.SetSync(util.CalcConsensusParamsKey(height), nParamsInfo.Bytes())
 	}
 }
 
@@ -179,11 +163,11 @@ func DeleteConsensusParam(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := util.CalcConsensusParamsKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.DeleteSync(key)
+			ndb.Delete(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.DeleteSync(key)
+			ldb.Delete(key)
 		}
 	}
 }
@@ -207,7 +191,7 @@ func LoadOldValidatorsInfo(db dbm.DB, height int64) *his.ValidatorsInfo {
 func SaveNewValidators(ldb dbm.DB, ndb db.DB, height int64) {
 	valInfo := LoadOldValidatorsInfo(ldb, height)
 	if valInfo != nil {
-		nValInfo := ConvertValidatorsInfo(valInfo)
+		nValInfo := CvtValidatorsInfo(valInfo)
 		ndb.SetSync(util.CalcValidatorsKey(height), nValInfo.Bytes())
 	}
 }
@@ -216,11 +200,11 @@ func DeleteValidator(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := util.CalcValidatorsKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.DeleteSync(key)
+			ndb.Delete(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.DeleteSync(key)
+			ldb.Delete(key)
 		}
 	}
 }

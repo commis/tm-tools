@@ -3,6 +3,8 @@ package util
 import (
 	"fmt"
 
+	"github.com/commis/tm-upgrade/util"
+
 	his "github.com/commis/tm-tools/oldver/types"
 
 	"github.com/tendermint/go-amino"
@@ -43,6 +45,15 @@ func LoadNewGenesisDoc(db db.DB) *types.GenesisDoc {
 		return nil
 	}
 	return genDoc
+}
+
+func SaveNewGenesisDoc(ldb db.DB, genDoc *types.GenesisDoc) {
+	bytes, err := cdc.MarshalJSON(genDoc)
+	if err != nil {
+		fmt.Printf("Failed to save genesis doc due to marshaling error: %v", err)
+		return
+	}
+	ldb.SetSync([]byte(util.GenesisDocKey), bytes)
 }
 
 // blockstore
@@ -138,11 +149,11 @@ func DeleteBlockMeta(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := calcBlockMetaKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.DeleteSync(key)
+			ndb.Delete(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.DeleteSync(key)
+			ldb.Delete(key)
 		}
 	}
 }
@@ -196,7 +207,7 @@ func SaveNewBlockPart2(batch db.Batch, height int64, index int, part *types.Part
 	batch.Set(calcBlockPartKey(height, index), partBytes)
 }
 
-func DeleteOldBlockParts(ldb dbm.DB, block *types.Block, state *his.State) {
+func DeleteOldBlockParts(ldb dbm.DB, block *his.Block, state *his.State) {
 	blockParts := block.MakePartSet(state.ConsensusParams.BlockPartSizeBytes)
 	for index := 0; index < blockParts.Total(); index++ {
 		key := calcBlockPartKey(block.Height, index)
@@ -248,19 +259,19 @@ func SaveNewCommit2(batch db.Batch, height int64, prefix string, commit *types.C
 func DeleteCommit(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	if newVer {
 		if key := calcBlockCommitKey(height); ndb.Has(key) {
-			ndb.DeleteSync(key)
+			ndb.Delete(key)
 		}
 
 		if key := calcSeenCommitKey(height); ndb.Has(key) {
-			ndb.DeleteSync(key)
+			ndb.Delete(key)
 		}
 	} else {
 		if key := calcBlockCommitKey(height); ldb.Has(key) {
-			ldb.DeleteSync(key)
+			ldb.Delete(key)
 		}
 
 		if key := calcSeenCommitKey(height); ldb.Has(key) {
-			ldb.DeleteSync(key)
+			ldb.Delete(key)
 		}
 	}
 }

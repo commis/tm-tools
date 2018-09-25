@@ -16,7 +16,7 @@ var (
 
 func init() {
 	ResetBlockCmd.Flags().StringVar(&dataPath, "db", "/home/tendermint", "Directory of tendermint data")
-	ResetBlockCmd.Flags().BoolVar(&dbVer, "v", true, "Whether new version data")
+	ResetBlockCmd.Flags().BoolVar(&dbVer, "v", false, "Whether new version data")
 	ResetBlockCmd.Flags().Int64Var(&eHeight, "h", 0, "Recover block height")
 }
 
@@ -32,13 +32,17 @@ func resetBlockHight(cmd *cobra.Command, args []string) error {
 	}
 
 	reset := op.TmDataStore{}
-	reset.OnStart("", dataPath)
+	if dbVer {
+		reset.OnStart("", dataPath)
+	} else {
+		reset.OnStart(dataPath, "")
+	}
 	defer reset.OnStop()
 
 	// recover data
 	reset.TotalHeight(dbVer)
 	reset.OnBlockRecover(dbVer, eHeight)
-	//reset.OnEvidenceRecover()
+	reset.OnEvidenceRecover(dbVer, eHeight)
 
 	return nil
 }

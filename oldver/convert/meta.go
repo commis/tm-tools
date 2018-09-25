@@ -21,7 +21,7 @@ func NewHeader(o *his.Header, lastBlockId *types.BlockID) types.Header {
 	n.DataHash = o.DataHash.Bytes()
 	n.ValidatorsHash = o.ValidatorsHash.Bytes()
 	n.ConsensusHash = o.ConsensusHash.Bytes()
-	n.AppHash = o.AppHash.Bytes() // TODO: AppHash need reset?
+	n.AppHash = o.AppHash.Bytes()
 	n.LastResultsHash = o.LastResultsHash.Bytes()
 	n.EvidenceHash = o.EvidenceHash.Bytes()
 

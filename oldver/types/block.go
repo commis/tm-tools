@@ -7,6 +7,7 @@ import (
 	gco "github.com/tendermint/go-crypto"
 	wire "github.com/tendermint/go-wire"
 	cmn "github.com/tendermint/tmlibs/common"
+	"github.com/tendermint/tmlibs/merkle"
 )
 
 type BlockID struct {
@@ -128,6 +129,43 @@ type Block struct {
 	*Data      `json:"data"`
 	Evidence   EvidenceData `json:"evidence"`
 	LastCommit *Commit      `json:"last_commit"`
+}
+
+func (b *Block) MakePartSet(partSize int) *PartSet {
+	bz, err := wire.MarshalBinary(b)
+	if err != nil {
+		panic(err)
+	}
+	return NewPartSetFromData(bz, partSize)
+}
+
+func NewPartSetFromData(data []byte, partSize int) *PartSet {
+	// divide data into 4kb parts.
+	total := (len(data) + partSize - 1) / partSize
+	parts := make([]*Part, total)
+	parts_ := make([]merkle.Hasher, total)
+	partsBitArray := cmn.NewBitArray(total)
+	for i := 0; i < total; i++ {
+		part := &Part{
+			Index: i,
+			Bytes: data[i*partSize : cmn.MinInt(len(data), (i+1)*partSize)],
+		}
+		parts[i] = part
+		parts_[i] = part
+		partsBitArray.SetIndex(i, true)
+	}
+	// Compute merkle proofs
+	root, proofs := merkle.SimpleProofsFromHashers(parts_)
+	for i := 0; i < total; i++ {
+		parts[i].Proof = *proofs[i]
+	}
+	return &PartSet{
+		total:         total,
+		hash:          root,
+		parts:         parts,
+		partsBitArray: partsBitArray,
+		count:         total,
+	}
 }
 
 type BlockStoreStateJSON struct {

@@ -62,9 +62,10 @@ func NewBlockFromOld(ldb dbm.DB, height int64, lastBlockID *types.BlockID, nStat
 	oBlock := LoadOldBlock(ldb, height)
 	if oBlock != nil {
 		nBlock := &types.Block{}
-		nBlock.Data = NewData(oBlock.Data)
-		nBlock.LastCommit = NewCommit(oBlock.LastCommit, lastBlockID, nState)
 		nBlock.Header = NewHeader(oBlock.Header, lastBlockID)
+		nBlock.Data = NewData(oBlock.Data)
+		nBlock.LastCommit = NewCommit(oBlock.LastCommit, nState)
+
 		return nBlock
 	}
 	return nil

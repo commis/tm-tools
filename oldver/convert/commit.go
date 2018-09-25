@@ -1,48 +1,43 @@
 package convert
 
 import (
-	"bytes"
 	"fmt"
 
 	his "github.com/commis/tm-tools/oldver/types"
 	oldtype "github.com/commis/tm-tools/oldver/types"
-	wire "github.com/tendermint/go-wire"
+	"github.com/tendermint/go-wire"
 	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
-	cmn "github.com/tendermint/tmlibs/common"
 	dbm "github.com/tendermint/tmlibs/db"
 )
 
 func LoadOldBlockCommit(ldb dbm.DB, height int64, prefix string) *oldtype.Commit {
-	var buf []byte
-
+	var key []byte
 	if prefix == "C" {
-		buf = ldb.Get(calcBlockCommitKey(height))
+		key = calcBlockCommitKey(height)
 	} else if prefix == "SC" {
-		buf = ldb.Get(calcSeenCommitKey(height))
-	}
-
-	r := bytes.NewReader(buf)
-	if r == nil {
-		return nil
+		key = calcSeenCommitKey(height)
 	}
 
 	var n int
 	var err error
+	r := GetReader(ldb, key)
 	blockCommit := wire.ReadBinary(&oldtype.Commit{}, r, 0, &n, &err).(*oldtype.Commit)
 	if err != nil {
-		cmn.Exit(fmt.Sprintf("Error reading commit: %v", err))
+		fmt.Sprintf("Error reading commit: %v", err)
+		return nil
 	}
 	return blockCommit
 }
 
-func NewSeenCommit(ldb dbm.DB, height int64, lastBlockID *types.BlockID, nState *state.State) *types.Commit {
+func NewSeenCommit(ldb dbm.DB, height int64, nState *state.State) *types.Commit {
 	oCommit := LoadOldBlockCommit(ldb, height, "SC")
-	return NewCommit(oCommit, lastBlockID, nState)
+	return NewCommit(oCommit, nState)
 }
 
-func NewCommit(oCommit *his.Commit, lastBlockID *types.BlockID, nState *state.State) *types.Commit {
+func NewCommit(oCommit *his.Commit, nState *state.State) *types.Commit {
 	nCommit := &types.Commit{}
+	nCommit.BlockID = NewBlockID(&oCommit.BlockID)
 
 	preCommits := []*types.Vote{}
 	for i := 0; i < len(oCommit.Precommits); i++ {
@@ -60,13 +55,12 @@ func NewCommit(oCommit *his.Commit, lastBlockID *types.BlockID, nState *state.St
 			Round:            v.Round,
 			Timestamp:        v.Timestamp,
 			Type:             v.Type,
-			BlockID:          *lastBlockID,
+			BlockID:          nCommit.BlockID,
 			Signature:        v.Signature.Bytes(),
 		}
 		preCommits = append(preCommits, one)
 	}
 
-	nCommit.BlockID = *lastBlockID
 	nCommit.Precommits = preCommits
 
 	return nCommit

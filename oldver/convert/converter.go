@@ -5,6 +5,7 @@ import (
 	gco "github.com/tendermint/go-crypto"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -66,4 +67,29 @@ func CvtNewEvidence(old his.Evidence) types.Evidence {
 	evidence.VoteB = CvtNewVote(oEvi.VoteB)
 
 	return evidence
+}
+
+func CvtValidatorsInfo(old *his.ValidatorsInfo) *state.ValidatorsInfo {
+	valInfo := new(state.ValidatorsInfo)
+	valInfo.ValidatorSet = NewValidatorSet(old.ValidatorSet)
+	valInfo.LastHeightChanged = old.LastHeightChanged
+
+	return valInfo
+}
+
+func CvtConsensusParamsInfo(old *his.ConsensusParamsInfo) *state.ConsensusParamsInfo {
+	consensusParam := new(state.ConsensusParamsInfo)
+	consensusParam.ConsensusParams = CvtConsensusParams(&old.ConsensusParams)
+	consensusParam.LastHeightChanged = old.LastHeightChanged
+
+	return consensusParam
+}
+
+func CvtConsensusParams(old *his.ConsensusParams) types.ConsensusParams {
+	return types.ConsensusParams{
+		BlockSize:      types.BlockSize{MaxBytes: old.BlockSize.MaxBytes, MaxTxs: old.BlockSize.MaxTxs, MaxGas: old.BlockSize.MaxGas},
+		TxSize:         types.TxSize{MaxBytes: old.TxSize.MaxBytes, MaxGas: old.TxSize.MaxGas},
+		BlockGossip:    types.BlockGossip{BlockPartSizeBytes: old.BlockGossip.BlockPartSizeBytes},
+		EvidenceParams: types.EvidenceParams{MaxAge: old.EvidenceParams.MaxAge},
+	}
 }
