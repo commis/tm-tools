@@ -1,12 +1,25 @@
 #!/bin/bash
 
 TM_ROOT=$(cd `dirname $(readlink -f "$0")`/.. && pwd)
-TM_DATA=${TM_ROOT}/tm-data
 TM_TOOL="${TM_ROOT}/bin/tm_tools"
-TM_VIEW=${TM_DATA}/result
 
-OLD_VER="v0.18.0"
-NEW_VER="v0.23.1"
+function init() {
+    cfg=$TM_ROOT/scripts/.env
+    TM_DATA=$(cat ${cfg}|grep '^TM_DATA'|sed 's/"//g'|cut -d= -f2)
+    if [ "$TM_DATA" == "" ]; then
+        echo "use default data directory"
+        OLD_VER="v0.18.0"
+        NEW_VER="v0.23.1"
+        TM_DATA=${TM_ROOT}/tm-data
+    else
+        echo "use setting data directory"
+        OLD_VER=$(cat ${cfg}|grep '^OLD_VER'|sed 's/"//g'|cut -d= -f2)
+        NEW_VER=$(cat ${cfg}|grep '^NEW_VER'|sed 's/"//g'|cut -d= -f2)
+    fi
+    TM_VIEW=${TM_DATA}/result
+
+    mkdir -p ${TM_VIEW}
+}
 
 function view_all() {
     rstdir=$1
@@ -58,12 +71,13 @@ function recover_height() {
     height=$3
     params=""
     if [ "$2" == "new" ]; then params="${params} --v"; fi
+    echo "recover block height to ${height} ..."
 
     dbPath=${TM_DATA}/{VER_DIR}/tendermint
     db=$(echo $dbPath |sed "s/{VER_DIR}/$verdir/g")
 
     ${TM_TOOL} recover --db ${db} --h ${height} ${params}
-    echo "${TM_TOOL} recover --db ${db} --h ${height} ${params}"
+    # echo "${TM_TOOL} recover --db ${db} --h ${height} ${params}"
     
     echo "recover block height finished."
 }
@@ -86,9 +100,6 @@ function view_version_data() {
 }
 
 function do_upgrade() {
-    if [ -d "${TM_VIEW} " ]; then rm -rf ${TM_VIEW}/*; fi
-    mkdir -p ${TM_VIEW}
-
     view_version_data "${OLD_VER}" ${OLD_VER} "old"
     migrate_all ${OLD_VER} ${NEW_VER}
     view_version_data "${NEW_VER}" ${NEW_VER} "new"
@@ -97,18 +108,20 @@ function do_upgrade() {
 }
 
 function do_recover() {
-    if [ -d "${TM_VIEW} " ]; then rm -rf ${TM_VIEW}/*; fi
-    mkdir -p ${TM_VIEW}
+    retHeight=29
     
-    view_version_data "${OLD_VER}-r" ${OLD_VER} "old"
-    recover_height ${OLD_VER} "old" 85
-    view_version_data "${OLD_VER}-t" ${OLD_VER} "old"
+    # view_version_data "${OLD_VER}-r" ${OLD_VER} "old"
+    recover_height ${OLD_VER} "old" ${retHeight}
+    # view_version_data "${OLD_VER}-t" ${OLD_VER} "old"
     
     echo "do recover block success."
 }
 
 # main function
 function main() {
+    init
+    if [ -d "${TM_VIEW}" ]; then rm -rf ${TM_VIEW}/*; fi
+
     # do_upgrade
     do_recover
 }

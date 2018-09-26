@@ -12,6 +12,11 @@ func FileNameNoExt(fpath string) string {
 	return strings.TrimSuffix(base, filepath.Ext(fpath))
 }
 
+func GetParentDirectory(currDir string, level int) string {
+	dirs := strings.Split(currDir, "/")
+	return strings.Join(dirs[:len(dirs)-level], "/")
+}
+
 func CopyFile(dstName, srcName string) (written int64, err error) {
 	src, err := os.Open(srcName)
 	if err != nil {

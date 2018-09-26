@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/tendermint/tendermint/consensus"
+
 	"github.com/commis/tm-tools/libs/util"
 	cvt "github.com/commis/tm-tools/oldver/convert"
 	his "github.com/commis/tm-tools/oldver/types"
@@ -16,6 +18,8 @@ import (
 )
 
 type TmDataStore struct {
+	ethDbPath                                 string
+	wal                                       consensus.WAL
 	oBlockDb, oStateDb, oEvidenceDb, oTrustDb dbm.DB
 	nBlockDb, nStateDb, nEvidenceDb, nTrustDb db.DB
 	newState                                  *state.State
@@ -23,7 +27,12 @@ type TmDataStore struct {
 }
 
 func (c *TmDataStore) OnStart(oldPath, newPath string) {
+	var err error
 	if oldPath != "" {
+		c.ethDbPath = util.GetParentDirectory(oldPath, 1)
+		if c.wal, err = consensus.NewWAL(oldPath + "/data/cs.wal/wal"); err != nil {
+			cmn.Exit(fmt.Sprintf("create wal failed.%s", err.Error()))
+		}
 		c.oBlockDb = dbm.NewDB("blockstore", dbm.LevelDBBackend, oldPath+"/data")
 		c.oStateDb = dbm.NewDB("state", dbm.LevelDBBackend, oldPath+"/data")
 		c.oEvidenceDb = dbm.NewDB("evidence", dbm.LevelDBBackend, oldPath+"/data")
@@ -31,14 +40,22 @@ func (c *TmDataStore) OnStart(oldPath, newPath string) {
 	}
 
 	if newPath != "" {
+		c.ethDbPath = util.GetParentDirectory(newPath, 1)
+		if c.wal, err = consensus.NewWAL(newPath + "/data/cs.wal/wal"); err != nil {
+			cmn.Exit(fmt.Sprintf("create wal failed.%s", err.Error()))
+		}
 		c.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, newPath+"/data")
 		c.nStateDb = db.NewDB("state", db.LevelDBBackend, newPath+"/data")
 		c.nEvidenceDb = db.NewDB("evidence", db.LevelDBBackend, newPath+"/data")
 		c.nTrustDb = db.NewDB("trusthistory", db.GoLevelDBBackend, newPath+"/data")
 	}
+
+	c.wal.Start()
 }
 
 func (c *TmDataStore) OnStop() {
+	c.wal.Stop()
+
 	c.close1(c.oBlockDb)
 	c.close1(c.oStateDb)
 	c.close1(c.oEvidenceDb)
@@ -117,7 +134,7 @@ func (c *TmDataStore) OnBlockStore(startHeight int64) {
 		c.saveBlock(batch, nBlock, nMeta, seenCommit)
 		if cnt%limit == 0 {
 			log.Printf("batch write %v/%v\n", cnt, c.totalHeight)
-			batch.Write()
+			batch.WriteSync()
 			batch = c.nBlockDb.NewBatch()
 		}
 
@@ -129,7 +146,7 @@ func (c *TmDataStore) OnBlockStore(startHeight int64) {
 	}
 	if cnt%limit != 0 {
 		log.Printf("batch write %v/%v\n", cnt, c.totalHeight)
-		batch.Write()
+		batch.WriteSync()
 	}
 	c.upgradeStateData(index)
 
@@ -160,12 +177,21 @@ func (c *TmDataStore) OnBlockRecover(newVersion bool, resetHeight int64) {
 	if c.totalHeight <= resetHeight {
 		cmn.Exit(fmt.Sprintf("reset height %d >= total height %d", resetHeight, c.totalHeight))
 	}
+	c.resetEthBlock(resetHeight)
+	c.wal.WriteSync(consensus.EndHeightMessage{Height: resetHeight})
 
 	if newVersion {
 		c.resetNewBlock(resetHeight)
 	} else {
 		c.resetOldBlock(resetHeight)
 	}
+}
+
+func (c *TmDataStore) resetEthBlock(height int64) {
+	eth := CreateEthDb(c.ethDbPath)
+	defer eth.OnStop()
+
+	eth.ResetBlockHeight(height)
 }
 
 func (c *TmDataStore) OnEvidenceRecover(newVersion bool, resetHeight int64) {

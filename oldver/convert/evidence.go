@@ -42,13 +42,13 @@ func NewEvidence(ldb dbm.DB, ndb db.DB, prefixKey string) {
 		util.SaveNewEvidence(batch, key, &newEi)
 		if cnt%limit == 0 {
 			log.Printf("batch write evidence %v\n", cnt)
-			batch.Write()
+			batch.WriteSync()
 			batch = ndb.NewBatch()
 		}
 	}
 	if cnt%limit != 0 {
 		log.Printf("batch write evidence %v\n", cnt)
-		batch.Write()
+		batch.WriteSync()
 	}
 }
 

@@ -127,11 +127,11 @@ func DeleteABCIResponse(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := util.CalcABCIResponsesKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.Delete(key)
+			ndb.DeleteSync(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.Delete(key)
+			ldb.DeleteSync(key)
 		}
 	}
 }
@@ -163,11 +163,11 @@ func DeleteConsensusParam(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := util.CalcConsensusParamsKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.Delete(key)
+			ndb.DeleteSync(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.Delete(key)
+			ldb.DeleteSync(key)
 		}
 	}
 }
@@ -200,11 +200,11 @@ func DeleteValidator(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := util.CalcValidatorsKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.Delete(key)
+			ndb.DeleteSync(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.Delete(key)
+			ldb.DeleteSync(key)
 		}
 	}
 }

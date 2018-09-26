@@ -117,12 +117,12 @@ func LoadNewState(ldb db.DB) *state.State {
 
 func SaveOldState(ldb dbm.DB, s *his.State) {
 	buf := s.Bytes()
-	ldb.Set([]byte(StateKey), buf)
+	ldb.SetSync([]byte(StateKey), buf)
 }
 
 func SaveNewState(ldb db.DB, s *state.State) {
 	buf := s.Bytes()
-	ldb.Set([]byte(StateKey), buf)
+	ldb.SetSync([]byte(StateKey), buf)
 }
 
 // block header
@@ -149,11 +149,11 @@ func DeleteBlockMeta(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	key := calcBlockMetaKey(height)
 	if newVer {
 		if ndb.Has(key) {
-			ndb.Delete(key)
+			ndb.DeleteSync(key)
 		}
 	} else {
 		if ldb.Has(key) {
-			ldb.Delete(key)
+			ldb.DeleteSync(key)
 		}
 	}
 }
@@ -211,7 +211,7 @@ func DeleteOldBlockParts(ldb dbm.DB, block *his.Block, state *his.State) {
 	blockParts := block.MakePartSet(state.ConsensusParams.BlockPartSizeBytes)
 	for index := 0; index < blockParts.Total(); index++ {
 		key := calcBlockPartKey(block.Height, index)
-		ldb.Delete(key)
+		ldb.DeleteSync(key)
 	}
 }
 
@@ -219,7 +219,7 @@ func DeleteNewBlockParts(ldb db.DB, block *types.Block, state *state.State) {
 	blockParts := block.MakePartSet(state.ConsensusParams.BlockPartSizeBytes)
 	for index := 0; index < blockParts.Total(); index++ {
 		key := calcBlockPartKey(block.Height, index)
-		ldb.Delete(key)
+		ldb.DeleteSync(key)
 	}
 }
 
@@ -259,19 +259,19 @@ func SaveNewCommit2(batch db.Batch, height int64, prefix string, commit *types.C
 func DeleteCommit(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 	if newVer {
 		if key := calcBlockCommitKey(height); ndb.Has(key) {
-			ndb.Delete(key)
+			ndb.DeleteSync(key)
 		}
 
 		if key := calcSeenCommitKey(height); ndb.Has(key) {
-			ndb.Delete(key)
+			ndb.DeleteSync(key)
 		}
 	} else {
 		if key := calcBlockCommitKey(height); ldb.Has(key) {
-			ldb.Delete(key)
+			ldb.DeleteSync(key)
 		}
 
 		if key := calcSeenCommitKey(height); ldb.Has(key) {
-			ldb.Delete(key)
+			ldb.DeleteSync(key)
 		}
 	}
 }
