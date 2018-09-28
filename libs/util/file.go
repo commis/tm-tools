@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/commis/tm-tools/libs/log"
 )
 
 func FileNameNoExt(fpath string) string {
@@ -31,4 +33,11 @@ func CopyFile(dstName, srcName string) (written int64, err error) {
 	defer dst.Close()
 
 	return io.Copy(dst, src)
+}
+
+func Rename(dstName, srcName string) {
+	err := os.Rename(srcName, dstName)
+	if err != nil {
+		log.Errorf("failed to Rename file %s to %s", srcName, dstName)
+	}
 }

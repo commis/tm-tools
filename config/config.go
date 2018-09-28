@@ -1,8 +1,10 @@
 package config
 
+import "github.com/ontio/ontology/common/log"
+
 type BaseConfig struct {
 	// Output level for logging
-	LogLevel string `mapstructure:"log_level"`
+	LogLevel int `mapstructure:"log_level"`
 }
 
 func DefaultBaseConfig() BaseConfig {
@@ -11,8 +13,8 @@ func DefaultBaseConfig() BaseConfig {
 	}
 }
 
-func DefaultLogLevel() string {
-	return "debug"
+func DefaultLogLevel() int {
+	return log.DebugLog
 }
 
 type Config struct {

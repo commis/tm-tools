@@ -1,20 +1,13 @@
 package commands
 
 import (
-	"os"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-
 	cfg "github.com/commis/tm-tools/config"
-	"github.com/commis/tm-tools/libs/cli"
-	"github.com/commis/tm-tools/libs/cli/flags"
-	"github.com/tendermint/tendermint/libs/log"
+	"github.com/commis/tm-tools/libs/log"
+	"github.com/spf13/cobra"
 )
 
 var (
 	config = cfg.DefaultConfig()
-	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 )
 
 func init() {
@@ -22,7 +15,7 @@ func init() {
 }
 
 func registerFlagsRootCmd(cmd *cobra.Command) {
-	cmd.PersistentFlags().String("log_level", config.LogLevel, "Log level")
+	cmd.PersistentFlags().Int("log_level", config.LogLevel, "Log level (Trace/Debug/Info/Warn/Error)=(0/1/2/3/4)")
 }
 
 var RootCmd = &cobra.Command{
@@ -33,14 +26,8 @@ var RootCmd = &cobra.Command{
 			return nil
 		}
 
-		logger, err = flags.ParseLogLevel(config.LogLevel, logger, cfg.DefaultLogLevel())
-		if err != nil {
-			return err
-		}
-		if viper.GetBool(cli.TraceFlag) {
-			logger = log.NewTracingLogger(logger)
-		}
-		logger = logger.With("module", "main")
+		log.Log.SetDebugLevel(cfg.DefaultLogLevel())
+
 		return nil
 	},
 }

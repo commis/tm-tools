@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/commis/tm-tools/libs/log"
+
 	"github.com/commis/tm-tools/libs/util"
 	cvt "github.com/commis/tm-tools/oldver/convert"
 
@@ -98,7 +100,7 @@ func (d *DbHandler) Close() {
 func (d *DbHandler) GetDataByKey() {
 	data := d.getData(key)
 	if len(data) == 0 {
-		logger.Error("viewer data", "reason", fmt.Sprintf("%s is not exist", key))
+		log.Errorf("viewer data %s is not exist", key)
 		return
 	}
 
@@ -159,7 +161,7 @@ func (d *DbHandler) getData(key string) []byte {
 
 	res, err := d.LevelDb.Get([]byte(key), nil)
 	if err != nil {
-		logger.Debug("viewer get data", "reason", err.Error())
+		log.Debugf("failed to get data by key %v", err)
 		return []byte{}
 	}
 	return res

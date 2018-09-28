@@ -17,8 +17,6 @@ function init() {
         NEW_VER=$(cat ${cfg}|grep '^NEW_VER'|sed 's/"//g'|cut -d= -f2)
     fi
     TM_VIEW=${TM_DATA}/result
-
-    mkdir -p ${TM_VIEW}
 }
 
 function view_all() {
@@ -49,8 +47,8 @@ function view_detail_info() {
     srcfile=${TM_VIEW}/${rstdir}/${database}_all.txt
     while read line; do
         outfile=${output}/$(echo $line |sed 's/:/_/g').txt
-        ${TM_TOOL} view --db ${db} --q $line ${params} |jq . > ${outfile} 
         # echo "${TM_TOOL} view --db ${db} --q $line ${params} |jq ."
+        ${TM_TOOL} view --db ${db} --q $line ${params} |jq . > ${outfile} 
     done < ${srcfile}
     
     echo "view all of ${database} for ${verdir} finished."
@@ -60,8 +58,8 @@ function migrate_all() {
     oldPath=${TM_DATA}/${1}/tendermint
     newPath=${TM_DATA}/${2}/tendermint
 
+    echo "${TM_TOOL} migrate --old ${oldPath} --new ${newPath}"
     ${TM_TOOL} migrate --old ${oldPath} --new ${newPath}
-    # echo "${TM_TOOL} migrate --old ${oldPath} --new ${newPath}"
     
     echo "migrate all finished."
 }
@@ -76,8 +74,8 @@ function recover_height() {
     dbPath=${TM_DATA}/{VER_DIR}/tendermint
     db=$(echo $dbPath |sed "s/{VER_DIR}/$verdir/g")
 
+    echo "${TM_TOOL} recover --db ${db} --h ${height} ${params}"
     ${TM_TOOL} recover --db ${db} --h ${height} ${params}
-    # echo "${TM_TOOL} recover --db ${db} --h ${height} ${params}"
     
     echo "recover block height finished."
 }
@@ -108,7 +106,7 @@ function do_upgrade() {
 }
 
 function do_recover() {
-    retHeight=29
+    retHeight=$1
     
     # view_version_data "${OLD_VER}-r" ${OLD_VER} "old"
     recover_height ${OLD_VER} "old" ${retHeight}
@@ -123,6 +121,6 @@ function main() {
     if [ -d "${TM_VIEW}" ]; then rm -rf ${TM_VIEW}/*; fi
 
     # do_upgrade
-    do_recover
+    do_recover 100
 }
 main 2>&1 |grep -v 'duplicate proto'

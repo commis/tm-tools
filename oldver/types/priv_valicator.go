@@ -24,6 +24,28 @@ type PrivValidatorFS struct {
 	mtx      sync.Mutex
 }
 
+// Save persists the PrivValidatorFS to disk.
+func (pv *PrivValidatorFS) Save() {
+	pv.mtx.Lock()
+	defer pv.mtx.Unlock()
+	pv.save()
+}
+
+func (pv *PrivValidatorFS) save() {
+	outFile := pv.filePath
+	if outFile == "" {
+		panic("Cannot save PrivValidator: filePath not set")
+	}
+	jsonBytes, err := json.Marshal(pv)
+	if err != nil {
+		panic(err)
+	}
+	err = cmn.WriteFileAtomic(outFile, jsonBytes, 0600)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func LoadPrivValidator(filePath string) *PrivValidatorFS {
 	privValJSONBytes, err := ioutil.ReadFile(filePath)
 	if err != nil {

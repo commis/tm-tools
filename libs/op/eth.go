@@ -8,12 +8,12 @@ import (
 	cmn "github.com/tendermint/tendermint/libs/common"
 )
 
-type EthDB struct {
+type TmEthDb struct {
 	db *ethdb.LDBDatabase
 }
 
-func CreateEthDb(dbPath string) *EthDB {
-	eth := &EthDB{}
+func CreateEthDb(dbPath string) *TmEthDb {
+	eth := &TmEthDb{}
 	var err error
 	eth.db, err = ethdb.NewLDBDatabase(dbPath+"/ethermint/chaindata", 0, 256)
 	if err != nil {
@@ -23,13 +23,13 @@ func CreateEthDb(dbPath string) *EthDB {
 	return eth
 }
 
-func (e *EthDB) OnStop() {
+func (e *TmEthDb) OnStop() {
 	if e.db != nil {
 		e.db.Close()
 	}
 }
 
-func (e *EthDB) GetAll() {
+func (e *TmEthDb) GetAll() {
 	it := e.db.NewIterator()
 	it.Seek([]byte(""))
 	defer func() {
@@ -44,7 +44,7 @@ func (e *EthDB) GetAll() {
 	}
 }
 
-func (e *EthDB) ResetBlockHeight(height int64) {
+func (e *TmEthDb) ResetBlockHeight(height int64) {
 	endNumber := uint64(height)
 	totalHeight := e.getLastHeader()
 
@@ -56,14 +56,14 @@ func (e *EthDB) ResetBlockHeight(height int64) {
 	e.getLastHeader()
 }
 
-func (e *EthDB) getLastHeader() uint64 {
+func (e *TmEthDb) getLastHeader() uint64 {
 	hash := core.GetHeadBlockHash(e.db)
 	number := core.GetBlockNumber(e.db, hash)
 	fmt.Printf("header: %d %s\n", number, hash.String())
 	return number
 }
 
-func (e *EthDB) printHeader() {
+func (e *TmEthDb) printHeader() {
 	hash := core.GetHeadBlockHash(e.db)
 	number := core.GetBlockNumber(e.db, hash)
 	fmt.Printf("print header number: %d ===\n", number)
@@ -72,7 +72,7 @@ func (e *EthDB) printHeader() {
 	fmt.Printf("  %s\n", core.GetHeadFastBlockHash(e.db).String()) //headFastKey
 }
 
-func (e *EthDB) setHeader(height uint64) {
+func (e *TmEthDb) setHeader(height uint64) {
 	var err error
 	hash := core.GetCanonicalHash(e.db, height)
 	if err = core.WriteCanonicalHash(e.db, hash, height); err != nil {
