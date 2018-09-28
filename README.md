@@ -19,7 +19,7 @@ Usage: tm_tools migrate -old tmroot -new tmroot [-h startHeight]
 
 ## tm_tools view
 ```
-Usage: $ tm_tools view -db /path/of/db [-a get|getall|block] [-q key] [-d] [-v new|old] [-h height]
+Usage: $ tm_tools view -db /path/of/db [-a get|getall|block] [-q key] [-d] [-v] [-h height]
 
     -db : db，Note: the db path cannot end with "/"
     [-a get|getall|block]： read the value of a key | output all keyes | read block info
@@ -29,10 +29,10 @@ Usage: $ tm_tools view -db /path/of/db [-a get|getall|block] [-q key] [-d] [-v n
     [-h height]: block height，workes with "-a block" arg to read block info at height "N"
 
 examples：
-$ tm_view -db /path/of/blockstore.db -a getall 
-$ tm_view -db /path/of/blockstore.db -a block -t 1 -d 
-$ tm_view -db /path/of/blockstore.db -q "H:1" -d -v old 
-$ tm_view -db /path/of/state.db -q "stateKey" -d -v old 
+$ tm_tools view -db /path/of/blockstore.db -a getall 
+$ tm_tools view -db /path/of/blockstore.db -a block -t 1 -d 
+$ tm_tools view -db /path/of/blockstore.db -q "H:1" -d
+$ tm_tools view -db /path/of/state.db -q "stateKey" -d -v 
 ```
 
 ##### view 中参数key的说明
@@ -55,24 +55,41 @@ $ tm_view -db /path/of/state.db -q "stateKey" -d -v old
 
 ## tm_tools recover
 ```
-Allen@MacBook-Pro:~ ls -l ~/.tendermint.v0.23.1/data/
-drwxr-xr-x  8 Allen  staff  272 Oct 15 20:23 blockstore.db
-drwx------  3 Allen  staff  102 Oct 15 20:23 cs.wal
-drwx------  3 Allen  staff  102 Oct 15 20:23 mempool.wal
-drwxr-xr-x  8 Allen  staff  272 Oct 15 20:23 state.db
-drwxr-xr-x  7 Allen  staff  238 Oct 15 20:23 tx_index.db
+tm_tools recover --db /home/share/chaindata/peer4/tendermint --h 100
 ```
 
 ## 新版本数据目录
 ```
-Allen@MacBook-Pro:~ ls -l ~/.tendermint.v0.23.1/data/
-drwxr-xr-x  8 Allen  staff  272 Oct 15 20:23 blockstore.db
-drwx------  3 Allen  staff  102 Oct 15 20:23 cs.wal
-drwx------  3 Allen  staff  102 Oct 15 20:23 mempool.wal
-drwxr-xr-x  8 Allen  staff  272 Oct 15 20:23 state.db
-drwxr-xr-x  7 Allen  staff  238 Oct 15 20:23 tx_index.db
+root@mint:/home/share/chaindata# tree -L 3 peer1
+peer1
+├── ethermint
+│   ├── chaindata
+│   │   ├── 000009.log
+│   │   ├── 000011.ldb
+│   │   ├── CURRENT
+│   │   ├── LOCK
+│   │   ├── LOG
+│   │   └── MANIFEST-000010
+│   ├── LOCK
+│   ├── nodekey
+│   └── transactions.rlp
+└── tendermint
+    ├── addr_book.json
+    ├── config
+    │   ├── config.toml
+    │   ├── genesis.json
+    │   ├── node_key.json
+    │   └── priv_validator.json
+    └── data
+        ├── blockstore.db
+        ├── cs.wal
+        ├── evidence.db
+        ├── mempool.wal
+        ├── state.db
+        ├── trusthistory.db
+        └── tx_index.db
 ```
 
 
 ## 代码说明
-`tm-tools/types` 存放的是老版本的数据结构
+`tm-tools/older` 存放的是老版本的数据结构及相应的转换方法

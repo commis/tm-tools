@@ -119,8 +119,9 @@ function do_recover() {
 function main() {
     init
     if [ -d "${TM_VIEW}" ]; then rm -rf ${TM_VIEW}/*; fi
-
+    
+    view_version_data "${OLD_VER}-r" ${OLD_VER} "old"
     # do_upgrade
-    do_recover 100
+    # do_recover 100
 }
 main 2>&1 |grep -v 'duplicate proto'
