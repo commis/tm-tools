@@ -11,11 +11,7 @@ func NewHeader(o *his.Header, lastBlockId *types.BlockID) types.Header {
 	n.Height = o.Height
 	n.Time = o.Time
 	n.NumTxs = o.NumTxs
-	if lastBlockId != nil {
-		n.LastBlockID = *lastBlockId
-	} else {
-		n.LastBlockID = NewBlockID(&o.LastBlockID)
-	}
+	n.LastBlockID = *lastBlockId
 	n.TotalTxs = o.TotalTxs
 	n.LastCommitHash = o.LastCommitHash.Bytes()
 	n.DataHash = o.DataHash.Bytes()

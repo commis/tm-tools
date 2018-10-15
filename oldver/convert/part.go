@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/tendermint/tendermint/privval"
+
 	his "github.com/commis/tm-tools/oldver/types"
 	oldtype "github.com/commis/tm-tools/oldver/types"
-	wire "github.com/tendermint/go-wire"
+	"github.com/tendermint/go-wire"
 	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 	cmn "github.com/tendermint/tmlibs/common"
@@ -58,17 +60,19 @@ func LoadOldBlockPart(ldb dbm.DB, height int64, index int) *oldtype.Part {
 	return part
 }
 
-func NewBlockFromOld(ldb dbm.DB, height int64, lastBlockID *types.BlockID, nState *state.State) *types.Block {
+func NewBlockFromOld(ldb dbm.DB, height int64, lastBlockID *types.BlockID, nState *state.State, pv *privval.FilePV) *types.Block {
 	oBlock := LoadOldBlock(ldb, height)
-	if oBlock != nil {
-		nBlock := &types.Block{}
-		nBlock.Header = NewHeader(oBlock.Header, lastBlockID)
-		nBlock.Data = NewData(oBlock.Data)
-		nBlock.LastCommit = NewCommit(oBlock.LastCommit, nState)
-
-		return nBlock
+	if oBlock == nil {
+		return nil
 	}
-	return nil
+
+	nBlock := &types.Block{}
+	nBlock.Header = NewHeader(oBlock.Header, lastBlockID)
+	nBlock.Data = NewData(oBlock.Data)
+
+	nBlock.LastCommit = NewCommit(oBlock.LastCommit, nState, pv)
+
+	return nBlock
 }
 
 func NewData(o *his.Data) types.Data {

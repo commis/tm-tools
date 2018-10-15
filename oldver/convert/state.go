@@ -29,7 +29,7 @@ func InitState(ldb dbm.DB) *state.State {
 	retState.ChainID = oState.ChainID
 	retState.LastBlockHeight = oState.LastBlockHeight
 	retState.LastBlockTotalTx = oState.LastBlockTotalTx
-	retState.LastBlockID = NewBlockID(&oState.LastBlockID)
+	retState.LastBlockID = types.BlockID{} /*NewBlockID(&oState.LastBlockID)*/
 	retState.LastBlockTime = oState.LastBlockTime
 	retState.Validators = NewValidatorSet(oState.Validators)
 	retState.LastValidators = NewValidatorSet(oState.LastValidators)
@@ -81,18 +81,20 @@ func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
 	// Validators
 	for _, val := range oValidatorSet.Validators {
 		one := &types.Validator{}
+		valPubKey := CvtNewPubKey(val.PubKey)
 		one.Accum = val.Accum
-		one.Address = val.Address.Bytes()
-		one.PubKey = CvtNewPubKey(val.PubKey)
+		one.Address = valPubKey.Address()
+		one.PubKey = valPubKey
 		one.VotingPower = val.VotingPower
 
 		nValidatorSet.Validators = append(nValidatorSet.Validators, one)
 	}
 
 	// Proposer
+	proposerPubKey := CvtNewPubKey(oValidatorSet.Proposer.PubKey)
 	nValidatorSet.Proposer = &types.Validator{
-		Address:     oValidatorSet.Proposer.Address.Bytes(),
-		PubKey:      CvtNewPubKey(oValidatorSet.Proposer.PubKey),
+		Address:     proposerPubKey.Address(),
+		PubKey:      proposerPubKey,
 		VotingPower: oValidatorSet.Proposer.VotingPower,
 		Accum:       oValidatorSet.Proposer.Accum,
 	}

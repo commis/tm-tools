@@ -3,6 +3,10 @@ package convert
 import (
 	"fmt"
 
+	"github.com/commis/tm-tools/libs/log"
+
+	"github.com/tendermint/tendermint/privval"
+
 	his "github.com/commis/tm-tools/oldver/types"
 	oldtype "github.com/commis/tm-tools/oldver/types"
 	"github.com/tendermint/go-wire"
@@ -30,14 +34,14 @@ func LoadOldBlockCommit(ldb dbm.DB, height int64, prefix string) *oldtype.Commit
 	return blockCommit
 }
 
-func NewSeenCommit(ldb dbm.DB, height int64, nState *state.State) *types.Commit {
+func NewSeenCommit(ldb dbm.DB, height int64, state *state.State, pv *privval.FilePV) *types.Commit {
 	oCommit := LoadOldBlockCommit(ldb, height, "SC")
-	return NewCommit(oCommit, nState)
+	return NewCommit(oCommit, state, pv)
 }
 
-func NewCommit(oCommit *his.Commit, nState *state.State) *types.Commit {
+func NewCommit(oCommit *his.Commit, state *state.State, pv *privval.FilePV) *types.Commit {
 	nCommit := &types.Commit{}
-	nCommit.BlockID = NewBlockID(&oCommit.BlockID)
+	nCommit.BlockID = state.LastBlockID
 
 	preCommits := []*types.Vote{}
 	for i := 0; i < len(oCommit.Precommits); i++ {
@@ -48,16 +52,22 @@ func NewCommit(oCommit *his.Commit, nState *state.State) *types.Commit {
 			continue
 		}
 
-		one := &types.Vote{
-			ValidatorAddress: nState.Validators.Validators[i].Address,
-			ValidatorIndex:   i,
-			Height:           v.Height,
-			Round:            v.Round,
-			Timestamp:        v.Timestamp,
-			Type:             v.Type,
-			BlockID:          nCommit.BlockID,
-			Signature:        v.Signature.Bytes(),
+		one := &types.Vote{}
+		one.ValidatorAddress = state.Validators.Validators[i].Address
+		one.ValidatorIndex = i
+		one.Height = v.Height
+		one.Round = v.Round
+		one.Timestamp = v.Timestamp
+		one.Type = v.Type
+		one.BlockID = nCommit.BlockID
+
+		//重新写签名
+		sig, err := pv.PrivKey.Sign(one.SignBytes(state.ChainID))
+		if err != nil {
+			log.Errorf("failed to sign commit")
+			continue
 		}
+		one.Signature = sig //v.Signature.Bytes()
 		preCommits = append(preCommits, one)
 	}
 

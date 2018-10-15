@@ -3,8 +3,6 @@ package util
 import (
 	"fmt"
 
-	"github.com/commis/tm-upgrade/util"
-
 	his "github.com/commis/tm-tools/oldver/types"
 
 	"github.com/tendermint/go-amino"
@@ -53,7 +51,7 @@ func SaveNewGenesisDoc(ldb db.DB, genDoc *types.GenesisDoc) {
 		fmt.Printf("Failed to save genesis doc due to marshaling error: %v", err)
 		return
 	}
-	ldb.SetSync([]byte(util.GenesisDocKey), bytes)
+	ldb.SetSync([]byte(GenesisDoc), bytes)
 }
 
 // blockstore

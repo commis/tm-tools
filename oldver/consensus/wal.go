@@ -6,15 +6,10 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"path/filepath"
 	"time"
 
-	"github.com/pkg/errors"
-
-	his "github.com/commis/tm-tools/oldver/types"
-	wire "github.com/tendermint/go-wire"
-	auto "github.com/tendermint/tmlibs/autofile"
-	cmn "github.com/tendermint/tmlibs/common"
+	oldtype "github.com/commis/tm-tools/oldver/types"
+	"github.com/tendermint/go-wire"
 )
 
 const (
@@ -40,154 +35,11 @@ type WALMessage interface{}
 
 var _ = wire.RegisterInterface(
 	struct{ WALMessage }{},
-	wire.ConcreteType{his.EventDataRoundState{}, 0x01},
+	wire.ConcreteType{oldtype.EventDataRoundState{}, 0x01},
 	wire.ConcreteType{msgInfo{}, 0x02},
 	wire.ConcreteType{timeoutInfo{}, 0x03},
 	wire.ConcreteType{EndHeightMessage{}, 0x04},
 )
-
-//--------------------------------------------------------
-// Simple write-ahead logger
-
-// WAL is an interface for any write-ahead logger.
-type WAL interface {
-	Save(WALMessage)
-	Group() *auto.Group
-	SearchForEndHeight(height int64, options *WALSearchOptions) (gr *auto.GroupReader, found bool, err error)
-
-	Start() error
-	Stop() error
-	Wait()
-}
-
-// Write ahead logger writes msgs to disk before they are processed.
-// Can be used for crash-recovery and deterministic replay
-// TODO: currently the wal is overwritten during replay catchup
-//   give it a mode so it's either reading or appending - must read to end to start appending again
-type baseWAL struct {
-	cmn.BaseService
-
-	group *auto.Group
-	light bool // ignore block parts
-
-	enc *WALEncoder
-}
-
-func NewWAL(walFile string, light bool) (*baseWAL, error) {
-	err := cmn.EnsureDir(filepath.Dir(walFile), 0700)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to ensure WAL directory is in place")
-	}
-
-	group, err := auto.OpenGroup(walFile)
-	if err != nil {
-		return nil, err
-	}
-	wal := &baseWAL{
-		group: group,
-		light: light,
-		enc:   NewWALEncoder(group),
-	}
-	wal.BaseService = *cmn.NewBaseService(nil, "baseWAL", wal)
-	return wal, nil
-}
-
-func (wal *baseWAL) Group() *auto.Group {
-	return wal.group
-}
-
-func (wal *baseWAL) OnStart() error {
-	size, err := wal.group.Head.Size()
-	if err != nil {
-		return err
-	} else if size == 0 {
-		wal.Save(EndHeightMessage{0})
-	}
-	err = wal.group.Start()
-	return err
-}
-
-func (wal *baseWAL) OnStop() {
-	wal.BaseService.OnStop()
-	wal.group.Stop()
-}
-
-// called in newStep and for each pass in receiveRoutine
-func (wal *baseWAL) Save(msg WALMessage) {
-	if wal == nil {
-		return
-	}
-
-	if wal.light {
-		// in light mode we only write new steps, timeouts, and our own votes (no proposals, block parts)
-		if mi, ok := msg.(msgInfo); ok {
-			if mi.PeerID != "" {
-				return
-			}
-		}
-	}
-
-	// Write the wal message
-	if err := wal.enc.Encode(&TimedWALMessage{time.Now(), msg}); err != nil {
-		cmn.PanicQ(cmn.Fmt("Error writing msg to consensus wal: %v \n\nMessage: %v", err, msg))
-	}
-
-	// TODO: only flush when necessary
-	if err := wal.group.Flush(); err != nil {
-		cmn.PanicQ(cmn.Fmt("Error flushing consensus wal buf to file. Error: %v \n", err))
-	}
-}
-
-// WALSearchOptions are optional arguments to SearchForEndHeight.
-type WALSearchOptions struct {
-	// IgnoreDataCorruptionErrors set to true will result in skipping data corruption errors.
-	IgnoreDataCorruptionErrors bool
-}
-
-// SearchForEndHeight searches for the EndHeightMessage with the height and
-// returns an auto.GroupReader, whenever it was found or not and an error.
-// Group reader will be nil if found equals false.
-//
-// CONTRACT: caller must close group reader.
-func (wal *baseWAL) SearchForEndHeight(height int64, options *WALSearchOptions) (gr *auto.GroupReader, found bool, err error) {
-	var msg *TimedWALMessage
-
-	// NOTE: starting from the last file in the group because we're usually
-	// searching for the last height. See replay.go
-	min, max := wal.group.MinIndex(), wal.group.MaxIndex()
-	wal.Logger.Debug("Searching for height", "height", height, "min", min, "max", max)
-	for index := max; index >= min; index-- {
-		gr, err = wal.group.NewReader(index)
-		if err != nil {
-			return nil, false, err
-		}
-
-		dec := NewWALDecoder(gr)
-		for {
-			msg, err = dec.Decode()
-			if err == io.EOF {
-				// check next file
-				break
-			}
-			if options.IgnoreDataCorruptionErrors && IsDataCorruptionError(err) {
-				// do nothing
-			} else if err != nil {
-				gr.Close()
-				return nil, false, err
-			}
-
-			if m, ok := msg.Msg.(EndHeightMessage); ok {
-				if m.Height == height { // found
-					wal.Logger.Debug("Found", "height", height, "index", index)
-					return gr, true, nil
-				}
-			}
-		}
-		gr.Close()
-	}
-
-	return nil, false, nil
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -219,14 +71,6 @@ func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
 	_, err := enc.wr.Write(msg)
 
 	return err
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-// IsDataCorruptionError returns true if data has been corrupted inside WAL.
-func IsDataCorruptionError(err error) bool {
-	_, ok := err.(DataCorruptionError)
-	return ok
 }
 
 // DataCorruptionError is an error that occures if data on disk was corrupted.

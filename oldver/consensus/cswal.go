@@ -1,50 +1,100 @@
 package consensus
 
 import (
-	"github.com/commis/tm-tools/libs/log"
-	ts "github.com/commis/tm-tools/oldver/consensus/types"
-	his "github.com/commis/tm-tools/oldver/types"
+	oldcstype "github.com/commis/tm-tools/oldver/consensus/types"
+	oldtype "github.com/commis/tm-tools/oldver/types"
+	tdcns "github.com/tendermint/tendermint/consensus"
+	"github.com/tendermint/tendermint/types"
 )
 
-func FilterOldEventBlockHeight(height int64, msg WALMessage) bool {
+//var cdc = amino.NewCodec()
+//
+//func init() {
+//	consensus.RegisterConsensusMessages(cdc)
+//
+//}
+
+func FilterBlockWalMessage(height int64, msg WALMessage) bool {
 	switch m := msg.(type) {
 	case EndHeightMessage:
-		return height <= m.Height
-	case his.EventDataRoundState:
-		if m.Step == ts.RoundStepNewHeight.String() {
-			return height < m.Height
+		return m.Height >= height
+	case oldtype.EventDataRoundState:
+		if m.Step == oldcstype.RoundStepNewHeight.String() {
+			return m.Height > height
 		}
-		return height <= m.Height
+		return m.Height >= height
 	case timeoutInfo:
-		return height <= msg.(timeoutInfo).Height
+		return msg.(timeoutInfo).Height >= height
 	case msgInfo:
 		switch mi := m.Msg.(type) {
 		case *BlockPartMessage:
-			return height <= mi.Height
+			return mi.Height >= height
 		case *CommitStepMessage:
-			return height <= mi.Height
+			return mi.Height >= height
 		case *HasVoteMessage:
-			return height <= mi.Height
+			return mi.Height >= height
 		case *NewRoundStepMessage:
-			return height <= mi.Height
+			return mi.Height >= height
 		case *ProposalHeartbeatMessage:
-			return height <= mi.Heartbeat.Height
+			return mi.Heartbeat.Height >= height
 		case *ProposalMessage:
-			return height <= mi.Proposal.Height
+			return mi.Proposal.Height >= height
 		case *ProposalPOLMessage:
-			return height <= mi.Height
+			return mi.Height >= height
 		case *VoteMessage:
-			return height <= mi.Vote.Height
+			return mi.Vote.Height >= height
 		case *VoteSetBitsMessage:
-			return height <= mi.Height
+			return mi.Height >= height
 		case *VoteSetMaj23Message:
-			return height <= mi.Height
+			return mi.Height >= height
 		default:
-			log.Errorf("event: %v", msg)
 			break
 		}
 		break
 	}
 
 	return false
+}
+
+func ConvertWalMessage(message *TimedWALMessage) *tdcns.TimedWALMessage {
+	var msg tdcns.WALMessage = nil
+	switch m := message.Msg.(type) {
+	case EndHeightMessage:
+		msg = tdcns.EndHeightMessage{Height: m.Height}
+		break
+	case oldtype.EventDataRoundState:
+		msg = types.EventDataRoundState{Height: m.Height, Round: m.Round, Step: m.Step}
+		break
+		/*case timeoutInfo:
+			break
+		case msgInfo:
+			switch mi := m.Msg.(type) {
+			case *BlockPartMessage:
+				break
+			case *CommitStepMessage:
+				break
+			case *HasVoteMessage:
+				break
+			case *NewRoundStepMessage:
+				break
+			case *ProposalHeartbeatMessage:
+				break
+			case *ProposalMessage:
+				break
+			case *ProposalPOLMessage:
+				break
+			case *VoteMessage:
+				break
+			case *VoteSetBitsMessage:
+				break
+			case *VoteSetMaj23Message:
+				break
+			}
+			break*/
+	}
+
+	if &msg == nil {
+		return nil
+	}
+	return &tdcns.TimedWALMessage{Time: message.Time, Msg: msg}
 }

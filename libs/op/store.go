@@ -2,8 +2,8 @@ package op
 
 import (
 	"fmt"
-	"log"
 
+	"github.com/commis/tm-tools/libs/log"
 	"github.com/commis/tm-tools/libs/util"
 	cvt "github.com/commis/tm-tools/oldver/convert"
 	his "github.com/commis/tm-tools/oldver/types"
@@ -22,7 +22,9 @@ type TmDataStore struct {
 	oBlockDb, oStateDb, oEvidenceDb, oTrustDb dbm.DB
 	nBlockDb, nStateDb, nEvidenceDb, nTrustDb db.DB
 	newState                                  *state.State
-	totalHeight                               int64
+	Height                                    int64
+
+	pv *privval.FilePV
 }
 
 func (c *TmDataStore) OnStart(oldPath, newPath string) {
@@ -84,23 +86,23 @@ func (c *TmDataStore) OnPrivValidatorJSON(oPath, nPath string) {
 	privVali := privval.GenFilePV(nPath)
 	cvt.NewPrivValidator(oPath, privVali)
 	privVali.Save()
+
+	c.pv = privVali
 }
 
 func (c *TmDataStore) TotalHeight(isNew bool) {
 	if isNew {
-		c.totalHeight = util.LoadNewTotalHeight(c.nBlockDb)
+		c.Height = util.LoadNewTotalHeight(c.nBlockDb)
 	} else {
-		c.totalHeight = cvt.LoadOldTotalHeight(c.oBlockDb)
+		c.Height = cvt.LoadOldTotalHeight(c.oBlockDb)
 	}
-	fmt.Println("total height", c.totalHeight)
+	log.Infof("total height: %d", c.Height)
 }
 
 func (c *TmDataStore) OnBlockStore(startHeight int64) {
 	if startHeight < 1 {
 		cmn.Exit(fmt.Sprint("Invalid start height"))
 	}
-
-	c.newState = cvt.InitState(c.oStateDb)
 
 	var lastBlockID *types.BlockID
 	if startHeight == 1 {
@@ -110,22 +112,26 @@ func (c *TmDataStore) OnBlockStore(startHeight int64) {
 		lastBlockID = &nMeta.BlockID
 	}
 
+	c.newState = cvt.InitState(c.oStateDb)
+
 	cnt := 0
 	limit := 1000
 	index := startHeight
 	batch := c.nBlockDb.NewBatch()
-	for ; index <= c.totalHeight; index++ {
+	for ; index <= c.Height; index++ {
 		cnt++
-
-		nBlock := cvt.NewBlockFromOld(c.oBlockDb, index, lastBlockID, c.newState)
-		seenCommit := cvt.NewSeenCommit(c.oBlockDb, index, c.newState)
+		c.newState.LastBlockID = *lastBlockID
+		log.Debugf("upgrade block %d", index)
+		nBlock := cvt.NewBlockFromOld(c.oBlockDb, index, lastBlockID, c.newState, c.pv)
 
 		blockParts := nBlock.MakePartSet(c.newState.ConsensusParams.BlockPartSizeBytes)
 		nMeta := types.NewBlockMeta(nBlock, blockParts)
 
+		seenCommit := cvt.NewSeenCommit(c.oBlockDb, index, c.newState, c.pv)
+
 		c.saveBlock(batch, nBlock, nMeta, seenCommit)
 		if cnt%limit == 0 {
-			log.Printf("batch write %v/%v\n", cnt, c.totalHeight)
+			log.Infof("batch write %v/%v", cnt, c.Height)
 			batch.WriteSync()
 			batch = c.nBlockDb.NewBatch()
 		}
@@ -137,12 +143,10 @@ func (c *TmDataStore) OnBlockStore(startHeight int64) {
 		c.upgradeStateData(index)
 	}
 	if cnt%limit != 0 {
-		log.Printf("batch write %v/%v\n", cnt, c.totalHeight)
+		log.Infof("batch write %v/%v", cnt, c.Height)
 		batch.WriteSync()
 	}
 	c.upgradeStateData(index)
-
-	c.newState.LastBlockID = *lastBlockID
 	util.SaveNewState(c.nStateDb, c.newState)
 }
 
@@ -161,13 +165,18 @@ func (c *TmDataStore) saveBlock(batch dbm.Batch, block *types.Block, blockMeta *
 	util.SaveNewBlockStoreStateJSON2(batch, height)
 }
 
+func (c *TmDataStore) OnCsWal(oldPath, newPath string) {
+	wal := CreateTmWal(oldPath)
+	wal.UpdateCsWal(newPath, c)
+}
+
 func (c *TmDataStore) OnEvidence() {
 	cvt.UpgradeEvidence(c.oEvidenceDb, c.nEvidenceDb)
 }
 
 func (c *TmDataStore) OnBlockRecover(newVersion bool, resetHeight int64) {
-	if c.totalHeight <= resetHeight {
-		cmn.Exit(fmt.Sprintf("reset height %d >= total height %d", resetHeight, c.totalHeight))
+	if c.Height <= resetHeight {
+		cmn.Exit(fmt.Sprintf("reset height %d >= total height %d", resetHeight, c.Height))
 	}
 	c.resetEthBlock(resetHeight)
 
@@ -199,7 +208,7 @@ func (c *TmDataStore) resetOldBlock(height int64) {
 	state := c.getOldState(height)
 	util.SaveOldState(c.oStateDb, state)
 
-	for i := height + 1; i <= c.totalHeight; i++ {
+	for i := height + 1; i <= c.Height; i++ {
 		block := cvt.LoadOldBlock(c.oBlockDb, i)
 		c.deleteOldBlock(block, state)
 	}
@@ -211,7 +220,7 @@ func (c *TmDataStore) resetNewBlock(height int64) {
 	state := c.getNewState(height)
 	util.SaveNewState(c.nStateDb, state)
 
-	for i := height + 1; i <= c.totalHeight; i++ {
+	for i := height + 1; i <= c.Height; i++ {
 		block := util.LoadNewBlock(c.nBlockDb, i)
 		c.deleteNewBlock(block, state)
 	}

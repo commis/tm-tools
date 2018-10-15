@@ -1,6 +1,6 @@
 package config
 
-import "github.com/ontio/ontology/common/log"
+import "github.com/commis/tm-tools/libs/log"
 
 type BaseConfig struct {
 	// Output level for logging

@@ -5,8 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/commis/tm-upgrade/util"
-
+	"github.com/commis/tm-tools/libs/util"
 	his "github.com/commis/tm-tools/oldver/types"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/types"
@@ -47,7 +46,6 @@ func UpgradeGenesisJSON(oPath, nPath string) {
 
 func NewPrivValidator(oPath string, privVali *privval.FilePV) {
 	old := his.LoadPrivValidator(oPath)
-	privVali.Address = old.Address.Bytes()
 	privVali.LastHeight = old.LastHeight
 	privVali.LastRound = old.LastRound
 	privVali.LastStep = old.LastStep
@@ -55,10 +53,11 @@ func NewPrivValidator(oPath string, privVali *privval.FilePV) {
 	privVali.LastSignBytes = old.LastSignBytes.Bytes()
 	privVali.PubKey = CvtNewPubKey(old.PubKey)
 	privVali.PrivKey = CvtNewPrivKey(old.PrivKey)
+	privVali.Address = privVali.PubKey.Address()
 }
 
 func LoadOldGenesisDoc(db dbm.DB) *his.GenesisDoc {
-	bytes := db.Get([]byte(util.GenesisDocKey))
+	bytes := db.Get([]byte(util.GenesisDoc))
 	if len(bytes) == 0 {
 		return nil
 	}

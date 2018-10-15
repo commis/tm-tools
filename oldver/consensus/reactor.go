@@ -5,7 +5,6 @@ import (
 
 	cstypes "github.com/commis/tm-tools/oldver/consensus/types"
 	"github.com/commis/tm-tools/oldver/types"
-	"github.com/commis/tm-upgrade/old"
 	wire "github.com/tendermint/go-wire"
 	cmn "github.com/tendermint/tmlibs/common"
 )
@@ -104,7 +103,7 @@ func (m *BlockPartMessage) String() string {
 
 // VoteMessage is sent when voting for a proposal (or lack thereof).
 type VoteMessage struct {
-	Vote *old.Vote
+	Vote *types.Vote
 }
 
 // String returns a string representation.

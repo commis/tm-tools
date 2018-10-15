@@ -15,6 +15,7 @@ func CvtNewPubKey(old gco.PubKey) crypto.PubKey {
 	for i, bt := range oBytes {
 		nBytes[i] = bt
 	}
+
 	//fmt.Println(oBytes.String())
 	//fmt.Println(nBytes.String())
 	return nBytes

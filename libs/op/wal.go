@@ -7,8 +7,16 @@ import (
 	"github.com/commis/tm-tools/libs/log"
 	"github.com/commis/tm-tools/libs/util"
 	cs "github.com/commis/tm-tools/oldver/consensus"
+	amino "github.com/tendermint/go-amino"
 	"github.com/tendermint/tendermint/consensus"
 )
+
+var cdc = amino.NewCodec()
+
+func init() {
+	consensus.RegisterConsensusMessages(cdc)
+	consensus.RegisterWALMessages(cdc)
+}
 
 type TmWal struct {
 	mempool string
@@ -16,6 +24,7 @@ type TmWal struct {
 }
 
 func CreateTmWal(walPath string) *TmWal {
+	log.Infof("wal path: %s", walPath)
 	return &TmWal{
 		mempool: walPath + "/mempool.wal",
 		cswal:   walPath + "/cs.wal/wal"}
@@ -35,8 +44,8 @@ func (t *TmWal) ResetOldWalHeight(height int64) {
 	}()
 
 	lastHeight := height + 1
-	enc := cs.NewWALEncoder(wd)
 	dec := cs.NewWALDecoder(rd)
+	enc := cs.NewWALEncoder(wd)
 	for {
 		msg, err := dec.Decode()
 		if err == io.EOF {
@@ -46,7 +55,7 @@ func (t *TmWal) ResetOldWalHeight(height int64) {
 			return
 		}
 
-		if cs.FilterOldEventBlockHeight(lastHeight, msg.Msg) {
+		if consensus.FilterBlockWalMessage(lastHeight, msg.Msg) {
 			continue
 		}
 
@@ -82,13 +91,49 @@ func (t *TmWal) ResetNewWalHeight(height int64) {
 			return
 		}
 
-		if util.FilterNewEventBlockHeight(lastHeight, msg.Msg) {
+		if consensus.FilterBlockWalMessage(lastHeight, msg.Msg) {
 			continue
 		}
 
 		if err := enc.Encode(msg); err != nil {
 			log.Errorf("failed to encode msg: %v", err)
 			return
+		}
+	}
+}
+
+func (t *TmWal) UpdateCsWal(newPath string, c *TmDataStore) {
+	writeFile := newPath + "/cs.wal/wal"
+	rd, wd, err := t.open(writeFile)
+	if err != nil {
+		return
+	}
+	defer func() {
+		t.close(rd)
+		t.close(wd)
+	}()
+
+	dec := cs.NewWALDecoder(rd)
+	enc := consensus.NewWALEncoderExt(wd)
+	for {
+		msg, err := dec.Decode()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Errorf("failed to decode msg: %v", err)
+			return
+		}
+
+		if !cs.FilterBlockWalMessage(c.Height, msg.Msg) {
+			continue
+		}
+
+		if walEvent := cs.ConvertWalMessage(msg); walEvent != nil {
+			log.Infof("event msg: %+v", *msg)
+			if err := enc.Encode(walEvent); err != nil {
+				log.Errorf("failed to encode msg: %v", err)
+				return
+			}
 		}
 	}
 }
