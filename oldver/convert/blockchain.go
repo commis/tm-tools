@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/commis/tm-tools/libs/util"
+	"github.com/commis/tm-tools/libs/op/hold"
 	oldtype "github.com/commis/tm-tools/oldver/types"
 	cmn "github.com/tendermint/tendermint/libs/common"
 	dbm "github.com/tendermint/tmlibs/db"
@@ -16,7 +16,7 @@ func LoadOldTotalHeight(ldb dbm.DB) int64 {
 }
 
 func LoadOldBlockStoreStateJSON(ldb dbm.DB) oldtype.BlockStoreStateJSON {
-	bytes := ldb.Get([]byte(util.BlockStoreKey))
+	bytes := ldb.Get([]byte(hold.BlockStoreKey))
 	if bytes == nil {
 		return oldtype.BlockStoreStateJSON{
 			Height: 0,

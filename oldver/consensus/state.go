@@ -5,7 +5,7 @@ import (
 	"hash/crc32"
 	"time"
 
-	cstypes "github.com/commis/tm-tools/oldver/consensus/types"
+	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/p2p"
 )
 

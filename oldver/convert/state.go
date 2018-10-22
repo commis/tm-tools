@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/commis/tm-tools/libs/op/hold"
 	"github.com/commis/tm-tools/libs/util"
+
 	his "github.com/commis/tm-tools/oldver/types"
 	oldtype "github.com/commis/tm-tools/oldver/types"
 	"github.com/tendermint/go-wire"
@@ -20,7 +22,7 @@ func SaveOldBlockStoreStateJson(db dbm.DB, bsj his.BlockStoreStateJSON) {
 	if err != nil {
 		cmn.PanicSanity(cmn.Fmt("Could not marshal state bytes: %v", err))
 	}
-	db.SetSync([]byte(util.BlockStoreKey), bytes)
+	db.SetSync([]byte(hold.BlockStoreKey), bytes)
 }
 
 func InitState(ldb dbm.DB) *state.State {
@@ -29,7 +31,7 @@ func InitState(ldb dbm.DB) *state.State {
 	retState.ChainID = oState.ChainID
 	retState.LastBlockHeight = oState.LastBlockHeight
 	retState.LastBlockTotalTx = oState.LastBlockTotalTx
-	retState.LastBlockID = types.BlockID{} /*NewBlockID(&oState.LastBlockID)*/
+	retState.LastBlockID = types.BlockID{}
 	retState.LastBlockTime = oState.LastBlockTime
 	retState.Validators = NewValidatorSet(oState.Validators)
 	retState.LastValidators = NewValidatorSet(oState.LastValidators)
@@ -43,7 +45,7 @@ func InitState(ldb dbm.DB) *state.State {
 }
 
 func LoadOldState(ldb dbm.DB) *oldtype.State {
-	buf := ldb.Get([]byte(util.StateKey))
+	buf := ldb.Get([]byte(hold.StateKey))
 	if len(buf) == 0 {
 		return nil
 	}
@@ -57,49 +59,24 @@ func LoadOldState(ldb dbm.DB) *oldtype.State {
 	return s
 }
 
-func SaveState(ldb db.DB, lastBlockID *types.BlockID, nState *state.State) {
-	nState.LastBlockID = *lastBlockID
-	util.SaveNewState(ldb, nState)
-}
-
-func NewBlockID(old *his.BlockID) types.BlockID {
-	return types.BlockID{
-		Hash:        old.Hash.Bytes(),
-		PartsHeader: types.PartSetHeader{Total: old.PartsHeader.Total, Hash: old.PartsHeader.Hash.Bytes()},
-	}
-}
-
-func NewValidatorSet(oValidatorSet *his.ValidatorSet) *types.ValidatorSet {
-	if oValidatorSet == nil {
+func NewValidatorSet(oldValSet *his.ValidatorSet) *types.ValidatorSet {
+	if oldValSet == nil {
 		return nil
 	}
 
-	nValidatorSet := &types.ValidatorSet{
-		Validators: []*types.Validator{},
-	}
-
-	// Validators
-	for _, val := range oValidatorSet.Validators {
-		one := &types.Validator{}
+	vals := make([]*types.Validator, 0, len(oldValSet.Validators))
+	for _, val := range oldValSet.Validators {
 		valPubKey := CvtNewPubKey(val.PubKey)
-		one.Accum = val.Accum
-		one.Address = valPubKey.Address()
-		one.PubKey = valPubKey
-		one.VotingPower = val.VotingPower
-
-		nValidatorSet.Validators = append(nValidatorSet.Validators, one)
+		one := &types.Validator{
+			Address:     valPubKey.Address(),
+			PubKey:      valPubKey,
+			VotingPower: val.VotingPower,
+			Accum:       val.Accum,
+		}
+		vals = append(vals, one)
 	}
 
-	// Proposer
-	proposerPubKey := CvtNewPubKey(oValidatorSet.Proposer.PubKey)
-	nValidatorSet.Proposer = &types.Validator{
-		Address:     proposerPubKey.Address(),
-		PubKey:      proposerPubKey,
-		VotingPower: oValidatorSet.Proposer.VotingPower,
-		Accum:       oValidatorSet.Proposer.Accum,
-	}
-
-	return nValidatorSet
+	return types.NewValidatorSet(vals)
 }
 
 func LoadOldABCIResponse(db dbm.DB, height int64) *his.ABCIResponses {

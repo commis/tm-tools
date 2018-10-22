@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"time"
 
 	gco "github.com/tendermint/go-crypto"
@@ -22,6 +23,18 @@ type GenesisValidator struct {
 	PubKey gco.PubKey `json:"pub_key"`
 	Power  int64      `json:"power"`
 	Name   string     `json:"name"`
+}
+
+func MakeGenesisDocFromFile(genDocFile string) (*GenesisDoc, error) {
+	genDocJSON, err := ioutil.ReadFile(genDocFile)
+	if err != nil {
+		return nil, err
+	}
+	genDoc, err := GenesisDocFromJSON(genDocJSON)
+	if err != nil {
+		return nil, err
+	}
+	return genDoc, nil
 }
 
 func GenesisDocFromJSON(jsonBlob []byte) (*GenesisDoc, error) {

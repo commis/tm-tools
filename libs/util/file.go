@@ -1,7 +1,8 @@
 package util
 
 import (
-	"io"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,30 +15,43 @@ func FileNameNoExt(fpath string) string {
 	return strings.TrimSuffix(base, filepath.Ext(fpath))
 }
 
-func GetParentDirectory(currDir string, level int) string {
+func GetParentDir(currDir string, level int) string {
 	dirs := strings.Split(currDir, "/")
 	return strings.Join(dirs[:len(dirs)-level], "/")
 }
 
-func CopyFile(dstName, srcName string) (written int64, err error) {
-	src, err := os.Open(srcName)
-	if err != nil {
-		return 0, err
+func GetChildDir(root string) []string {
+	subdirs := make([]string, 0)
+	files, _ := ioutil.ReadDir(root)
+	for _, f := range files {
+		if f.IsDir() {
+			subdirs = append(subdirs, f.Name())
+		}
 	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(dstName, os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return 0, err
-	}
-	defer dst.Close()
-
-	return io.Copy(dst, src)
+	return subdirs
 }
 
 func Rename(dstName, srcName string) {
 	err := os.Rename(srcName, dstName)
 	if err != nil {
-		log.Errorf("failed to Rename file %s to %s", srcName, dstName)
+		log.Errorf("failed to Rename file %s, %v", srcName, err)
 	}
+}
+
+func CreateDirAll(dir string) bool {
+	if !Exist(dir) {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			fmt.Printf("failed to create dir %s\n", dir)
+			return false
+		}
+	}
+	return true
+}
+
+func Exist(dir string) bool {
+	_, err := os.Stat(dir)
+	if err != nil {
+		return false
+	}
+	return true
 }

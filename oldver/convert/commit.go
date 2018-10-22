@@ -4,18 +4,14 @@ import (
 	"fmt"
 
 	"github.com/commis/tm-tools/libs/log"
-
-	"github.com/tendermint/tendermint/privval"
-
-	his "github.com/commis/tm-tools/oldver/types"
-	oldtype "github.com/commis/tm-tools/oldver/types"
+	"github.com/commis/tm-tools/libs/op/store"
+	otp "github.com/commis/tm-tools/oldver/types"
 	"github.com/tendermint/go-wire"
-	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 	dbm "github.com/tendermint/tmlibs/db"
 )
 
-func LoadOldBlockCommit(ldb dbm.DB, height int64, prefix string) *oldtype.Commit {
+func LoadOldBlockCommit(ldb dbm.DB, height int64, prefix string) *otp.Commit {
 	var key []byte
 	if prefix == "C" {
 		key = calcBlockCommitKey(height)
@@ -26,53 +22,48 @@ func LoadOldBlockCommit(ldb dbm.DB, height int64, prefix string) *oldtype.Commit
 	var n int
 	var err error
 	r := GetReader(ldb, key)
-	blockCommit := wire.ReadBinary(&oldtype.Commit{}, r, 0, &n, &err).(*oldtype.Commit)
+	blockCommit := wire.ReadBinary(&otp.Commit{}, r, 0, &n, &err).(*otp.Commit)
 	if err != nil {
-		fmt.Sprintf("Error reading commit: %v", err)
+		log.Errorf("Error reading commit: %v", err)
 		return nil
 	}
 	return blockCommit
 }
 
-func NewSeenCommit(ldb dbm.DB, height int64, state *state.State, pv *privval.FilePV) *types.Commit {
-	oCommit := LoadOldBlockCommit(ldb, height, "SC")
-	return NewCommit(oCommit, state, pv)
+func NewSeenCommit(ldb dbm.DB, block *types.Block) *types.Commit {
+	oCommit := LoadOldBlockCommit(ldb, block.Height, "SC")
+	return NewCommit(oCommit, block)
 }
 
-func NewCommit(oCommit *his.Commit, state *state.State, pv *privval.FilePV) *types.Commit {
+func NewCommit(oCommit *otp.Commit, block *types.Block) *types.Commit {
 	nCommit := &types.Commit{}
-	nCommit.BlockID = state.LastBlockID
+	nCommit.BlockID = block.LastBlockID
 
-	preCommits := []*types.Vote{}
-	for i := 0; i < len(oCommit.Precommits); i++ {
-		v := oCommit.Precommits[i]
+	votes := make([]*types.Vote, 0, len(oCommit.Precommits))
+	for _, v := range oCommit.Precommits {
 		// node's commit may be nil
 		if v == nil {
-			preCommits = append(preCommits, nil)
+			votes = append(votes, nil)
 			continue
 		}
 
 		one := &types.Vote{}
-		one.ValidatorAddress = state.Validators.Validators[i].Address
-		one.ValidatorIndex = i
+		one.Type = v.Type
+		one.BlockID = nCommit.BlockID
 		one.Height = v.Height
 		one.Round = v.Round
 		one.Timestamp = v.Timestamp
-		one.Type = v.Type
-		one.BlockID = nCommit.BlockID
 
-		//重新写签名
-		sig, err := pv.PrivKey.Sign(one.SignBytes(state.ChainID))
-		if err != nil {
-			log.Errorf("failed to sign commit")
-			continue
-		}
-		one.Signature = sig //v.Signature.Bytes()
-		preCommits = append(preCommits, one)
+		pv := store.GetNodePrivByAddress(v.ValidatorAddress.String())
+		sig, _ := pv.PrivVal.PrivKey.Sign(one.SignBytes(block.ChainID))
+		one.ValidatorAddress = pv.PrivVal.Address
+		one.ValidatorIndex = pv.Index
+		one.Signature = sig
+
+		votes = append(votes, one)
 	}
 
-	nCommit.Precommits = preCommits
-
+	nCommit.Precommits = votes
 	return nCommit
 }
 

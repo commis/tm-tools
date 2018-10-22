@@ -5,64 +5,58 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/commis/tm-tools/libs/util"
-	his "github.com/commis/tm-tools/oldver/types"
+	"github.com/commis/tm-tools/libs/op/hold"
+	otp "github.com/commis/tm-tools/oldver/types"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/types"
 	cmn "github.com/tendermint/tmlibs/common"
 	dbm "github.com/tendermint/tmlibs/db"
 )
 
-func OnConfigToml(configFilePath string) {
-	var configTmpl = `# This is a TOML config file.
-# For more information, see https://github.com/toml-lang/toml
-
-proxy_app = "tcp://0.0.0.0:46658"
-moniker = "anonymous"
-node_laddr = "tcp://0.0.0.0:46656"
-seeds = ""
-fast_sync = true
-db_backend = "leveldb"
-log_level = "info"
-rpc_laddr = "tcp://0.0.0.0:46657"
-`
-	cmn.WriteFile(configFilePath, []byte(configTmpl), 0644)
-}
-
-func UpgradeGenesisJSON(oPath, nPath string) {
-	jsonBytes, err := ioutil.ReadFile(oPath)
+func UpgradeGenesisJSON(oFile, nFile string) string {
+	jsonBytes, err := ioutil.ReadFile(oFile)
 	if err != nil {
 		cmn.Exit(err.Error())
 	}
 
-	oGen, err := his.GenesisDocFromJSON(jsonBytes)
+	oGen, err := otp.GenesisDocFromJSON(jsonBytes)
 	if err == nil {
-		nGen := NewGenesisDoc(oGen)
-		if err := nGen.SaveAs(nPath); err != nil {
+		nGen := toNewGenesisDoc(oGen)
+		if err := nGen.SaveAs(nFile); err != nil {
 			cmn.Exit(err.Error())
 		}
+		return nGen.ChainID
 	}
+
+	return ""
 }
 
-func NewPrivValidator(oPath string, privVali *privval.FilePV) {
-	old := his.LoadPrivValidator(oPath)
-	privVali.LastHeight = old.LastHeight
-	privVali.LastRound = old.LastRound
-	privVali.LastStep = old.LastStep
-	privVali.LastSignature = CvtNewSignature(old.LastSignature)
-	privVali.LastSignBytes = old.LastSignBytes.Bytes()
-	privVali.PubKey = CvtNewPubKey(old.PubKey)
-	privVali.PrivKey = CvtNewPrivKey(old.PrivKey)
-	privVali.Address = privVali.PubKey.Address()
+func UpgradePrivValidatorJson(oFile, nFile string) (string, *privval.FilePV) {
+	old := otp.LoadPrivValidator(oFile)
+	newPrivVal := privval.GenFilePV(nFile)
+
+	/*后续根据cs.wal消息更新*/
+	newPrivVal.LastHeight = old.LastHeight
+	newPrivVal.LastRound = old.LastRound
+	newPrivVal.LastStep = old.LastStep
+	newPrivVal.LastSignature = CvtNewSignature(old.LastSignature)
+	newPrivVal.LastSignBytes = old.LastSignBytes.Bytes()
+
+	newPrivVal.PubKey = CvtNewPubKey(old.PubKey)
+	newPrivVal.PrivKey = CvtNewPrivKey(old.PrivKey)
+	newPrivVal.Address = newPrivVal.PubKey.Address()
+
+	newPrivVal.Save()
+	return old.Address.String(), newPrivVal
 }
 
-func LoadOldGenesisDoc(db dbm.DB) *his.GenesisDoc {
-	bytes := db.Get([]byte(util.GenesisDoc))
+func LoadOldGenesisDoc(db dbm.DB) *otp.GenesisDoc {
+	bytes := db.Get([]byte(hold.GenesisDoc))
 	if len(bytes) == 0 {
 		return nil
 	}
 
-	var genDoc *his.GenesisDoc
+	var genDoc *otp.GenesisDoc
 	err := json.Unmarshal(bytes, &genDoc)
 	if err != nil {
 		log.Printf("Failed to load genesis doc due to unmarshaling error: %v (bytes: %X)", err, bytes)
@@ -70,7 +64,7 @@ func LoadOldGenesisDoc(db dbm.DB) *his.GenesisDoc {
 	return genDoc
 }
 
-func NewGenesisDoc(old *his.GenesisDoc) *types.GenesisDoc {
+func toNewGenesisDoc(old *otp.GenesisDoc) *types.GenesisDoc {
 	newGenesisDoc := new(types.GenesisDoc)
 	newGenesisDoc.AppHash = old.AppHash.Bytes()
 	newGenesisDoc.ChainID = old.ChainID

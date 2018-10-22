@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/tendermint/tendermint/privval"
-
 	his "github.com/commis/tm-tools/oldver/types"
 	oldtype "github.com/commis/tm-tools/oldver/types"
 	"github.com/tendermint/go-wire"
-	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 	cmn "github.com/tendermint/tmlibs/common"
 	dbm "github.com/tendermint/tmlibs/db"
@@ -60,7 +57,7 @@ func LoadOldBlockPart(ldb dbm.DB, height int64, index int) *oldtype.Part {
 	return part
 }
 
-func NewBlockFromOld(ldb dbm.DB, height int64, lastBlockID *types.BlockID, nState *state.State, pv *privval.FilePV) *types.Block {
+func NewBlockFromOld(ldb dbm.DB, height int64, lastBlockID *types.BlockID) *types.Block {
 	oBlock := LoadOldBlock(ldb, height)
 	if oBlock == nil {
 		return nil
@@ -70,13 +67,13 @@ func NewBlockFromOld(ldb dbm.DB, height int64, lastBlockID *types.BlockID, nStat
 	nBlock.Header = NewHeader(oBlock.Header, lastBlockID)
 	nBlock.Data = NewData(oBlock.Data)
 
-	nBlock.LastCommit = NewCommit(oBlock.LastCommit, nState, pv)
+	nBlock.LastCommit = NewCommit(oBlock.LastCommit, nBlock)
 
 	return nBlock
 }
 
 func NewData(o *his.Data) types.Data {
-	txs := []types.Tx{}
+	txs := make([]types.Tx, 0)
 	for _, tx := range o.Txs {
 		txs = append(txs, []byte(tx))
 	}
@@ -86,11 +83,11 @@ func NewData(o *his.Data) types.Data {
 }
 
 func GetReader(ldb dbm.DB, key []byte) io.Reader {
-	bytez := ldb.Get(key)
-	if bytez == nil {
+	bz := ldb.Get(key)
+	if bz == nil {
 		return nil
 	}
-	return bytes.NewReader(bytez)
+	return bytes.NewReader(bz)
 }
 
 //==============================================================================

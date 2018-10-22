@@ -1,12 +1,13 @@
 package op
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/commis/tm-tools/libs/log"
-	"github.com/commis/tm-tools/libs/util"
+	"github.com/commis/tm-tools/libs/op/hold"
 	cvt "github.com/commis/tm-tools/oldver/convert"
-	his "github.com/commis/tm-tools/oldver/types"
+	otp "github.com/commis/tm-tools/oldver/types"
 	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/db"
 	"github.com/tendermint/tendermint/privval"
@@ -16,223 +17,178 @@ import (
 )
 
 type TmDataStore struct {
-	ethDbPath                                 string
-	walPath                                   string
-	cfgPath                                   string
-	oBlockDb, oStateDb, oEvidenceDb, oTrustDb dbm.DB
-	nBlockDb, nStateDb, nEvidenceDb, nTrustDb db.DB
-	newState                                  *state.State
-	Height                                    int64
+	oldPath     string
+	newPath     string
+	totalHeight int64
+	newState    *state.State
 
-	pv *privval.FilePV
+	oBlockDb, oStateDb dbm.DB
+	nBlockDb, nStateDb db.DB
 }
 
-func (c *TmDataStore) OnStart(oldPath, newPath string) {
+func CreateTmDataStore(oldPath, newPath string) *TmDataStore {
+	ts := &TmDataStore{oldPath: oldPath, newPath: newPath}
+
 	if oldPath != "" {
-		c.ethDbPath = util.GetParentDirectory(oldPath, 1)
-		c.walPath = oldPath + "/data"
-		c.cfgPath = oldPath + "/config"
-		c.oBlockDb = dbm.NewDB("blockstore", dbm.LevelDBBackend, oldPath+"/data")
-		c.oStateDb = dbm.NewDB("state", dbm.LevelDBBackend, oldPath+"/data")
-		c.oEvidenceDb = dbm.NewDB("evidence", dbm.LevelDBBackend, oldPath+"/data")
-		c.oTrustDb = dbm.NewDB("trusthistory", dbm.GoLevelDBBackend, oldPath+"/data")
+		dataPath := oldPath + "/data"
+		ts.oBlockDb = dbm.NewDB("blockstore", dbm.LevelDBBackend, dataPath)
+		ts.oStateDb = dbm.NewDB("state", dbm.LevelDBBackend, dataPath)
 	}
 
 	if newPath != "" {
-		c.ethDbPath = util.GetParentDirectory(newPath, 1)
-		c.walPath = newPath + "/data"
-		c.cfgPath = newPath + "/config"
-		c.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, newPath+"/data")
-		c.nStateDb = db.NewDB("state", db.LevelDBBackend, newPath+"/data")
-		c.nEvidenceDb = db.NewDB("evidence", db.LevelDBBackend, newPath+"/data")
-		c.nTrustDb = db.NewDB("trusthistory", db.GoLevelDBBackend, newPath+"/data")
+		dataPath := newPath + "/data"
+		ts.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, dataPath)
+		ts.nStateDb = db.NewDB("state", db.LevelDBBackend, dataPath)
 	}
+
+	return ts
 }
 
-func (c *TmDataStore) OnStop() {
-	c.close1(c.oBlockDb)
-	c.close1(c.oStateDb)
-	c.close1(c.oEvidenceDb)
-	c.close1(c.oTrustDb)
+func (ts *TmDataStore) OnStop() {
+	CloseDbm(ts.oBlockDb)
+	CloseDbm(ts.oStateDb)
 
-	c.close2(c.nBlockDb)
-	c.close2(c.nStateDb)
-	c.close2(c.nEvidenceDb)
-	c.close2(c.nTrustDb)
+	CloseDb(ts.nBlockDb)
+	CloseDb(ts.nStateDb)
 }
 
-func (c *TmDataStore) close1(ldb dbm.DB) {
-	if ldb != nil {
-		ldb.Close()
-	}
-}
-
-func (c *TmDataStore) close2(ldb db.DB) {
-	if ldb != nil {
-		ldb.Close()
-	}
-}
-
-func (c *TmDataStore) OnGenesisJSON(oPath, nPath string) {
-	cvt.UpgradeGenesisJSON(oPath, nPath)
-
-	genDoc, err := types.GenesisDocFromFile(nPath)
-	if err == nil {
-		util.SaveNewGenesisDoc(c.nStateDb, genDoc)
-	}
-}
-
-func (c *TmDataStore) OnPrivValidatorJSON(oPath, nPath string) {
-	privVali := privval.GenFilePV(nPath)
-	cvt.NewPrivValidator(oPath, privVali)
-	privVali.Save()
-
-	c.pv = privVali
-}
-
-func (c *TmDataStore) TotalHeight(isNew bool) {
+func (ts *TmDataStore) GetTotalHeight(isNew bool) {
 	if isNew {
-		c.Height = util.LoadNewTotalHeight(c.nBlockDb)
+		ts.totalHeight = hold.LoadNewBlockHeight(ts.nBlockDb)
 	} else {
-		c.Height = cvt.LoadOldTotalHeight(c.oBlockDb)
+		ts.totalHeight = cvt.LoadOldTotalHeight(ts.oBlockDb)
 	}
-	log.Infof("total height: %d", c.Height)
+	log.Infof("total height: %d", ts.totalHeight)
 }
 
-func (c *TmDataStore) OnBlockStore(startHeight int64) {
+func (ts *TmDataStore) CheckNeedUpgrade(privVal *privval.FilePV) bool {
+	nPvFile := ts.newPath + "/config/priv_validator.json"
+	nPrivVal := privval.LoadFilePV(nPvFile)
+	if bytes.Equal(privVal.Address, nPrivVal.Address) {
+		return true
+	}
+
+	return false
+}
+
+func (ts *TmDataStore) OnBlockStore(startHeight int64) {
 	if startHeight < 1 {
-		cmn.Exit(fmt.Sprint("Invalid start height"))
+		cmn.Exit(fmt.Sprintf("Invalid start height"))
 	}
 
-	var lastBlockID *types.BlockID
-	if startHeight == 1 {
-		lastBlockID = &types.BlockID{}
-	} else {
-		nMeta := util.LoadNewBlockMeta(c.nBlockDb, startHeight-1)
-		lastBlockID = &nMeta.BlockID
-	}
-
-	c.newState = cvt.InitState(c.oStateDb)
+	ts.newState = cvt.InitState(ts.oStateDb)
+	lastBlockID := ts.getUpgradeLastBlockID(startHeight)
 
 	cnt := 0
 	limit := 1000
 	index := startHeight
-	batch := c.nBlockDb.NewBatch()
-	for ; index <= c.Height; index++ {
+	batch := ts.nBlockDb.NewBatch()
+	for ; index <= ts.totalHeight; index++ {
 		cnt++
-		c.newState.LastBlockID = *lastBlockID
+		ts.newState.LastBlockID = *lastBlockID
 		log.Debugf("upgrade block %d", index)
-		nBlock := cvt.NewBlockFromOld(c.oBlockDb, index, lastBlockID, c.newState, c.pv)
+		nBlock := cvt.NewBlockFromOld(ts.oBlockDb, index, lastBlockID)
 
-		blockParts := nBlock.MakePartSet(c.newState.ConsensusParams.BlockPartSizeBytes)
+		blockParts := nBlock.MakePartSet(ts.newState.ConsensusParams.BlockPartSizeBytes)
 		nMeta := types.NewBlockMeta(nBlock, blockParts)
 
-		seenCommit := cvt.NewSeenCommit(c.oBlockDb, index, c.newState, c.pv)
-
-		c.saveBlock(batch, nBlock, nMeta, seenCommit)
+		seenCommit := cvt.NewSeenCommit(ts.oBlockDb, nBlock)
+		ts.saveBlock(batch, nBlock, nMeta, seenCommit)
 		if cnt%limit == 0 {
-			log.Infof("batch write %v/%v", cnt, c.Height)
+			log.Infof("batch write %v/%v", cnt, ts.totalHeight)
 			batch.WriteSync()
-			batch = c.nBlockDb.NewBatch()
+			batch = ts.nBlockDb.NewBatch()
 		}
 
-		// update lastBlockID
 		lastBlockID = &nMeta.BlockID
-
-		// upgrade state data
-		c.upgradeStateData(index)
+		ts.upgradeStateData(index)
 	}
 	if cnt%limit != 0 {
-		log.Infof("batch write %v/%v", cnt, c.Height)
+		log.Infof("batch write %v/%v", cnt, ts.totalHeight)
 		batch.WriteSync()
 	}
-	c.upgradeStateData(index)
-	util.SaveNewState(c.nStateDb, c.newState)
+	ts.upgradeStateData(index)
+	hold.SaveNewState(ts.nStateDb, ts.newState)
 }
 
-func (c *TmDataStore) upgradeStateData(height int64) {
-	cvt.SaveNewABCIResponse(c.oStateDb, c.nStateDb, height)
-	cvt.SaveNewConsensusParams(c.oStateDb, c.nStateDb, height)
-	cvt.SaveNewValidators(c.oStateDb, c.nStateDb, height)
-}
-
-func (c *TmDataStore) saveBlock(batch dbm.Batch, block *types.Block, blockMeta *types.BlockMeta, seenCommit *types.Commit) {
-	height := block.Height
-	util.SaveNewBlockMeta2(batch, height, blockMeta)
-	util.SaveNewBlockParts2(batch, height, block, c.newState)
-	util.SaveNewCommit2(batch, height-1, "C", block.LastCommit)
-	util.SaveNewCommit2(batch, height, "SC", seenCommit)
-	util.SaveNewBlockStoreStateJSON2(batch, height)
-}
-
-func (c *TmDataStore) OnCsWal(oldPath, newPath string) {
-	wal := CreateTmWal(oldPath)
-	wal.UpdateCsWal(newPath, c)
-}
-
-func (c *TmDataStore) OnEvidence() {
-	cvt.UpgradeEvidence(c.oEvidenceDb, c.nEvidenceDb)
-}
-
-func (c *TmDataStore) OnBlockRecover(newVersion bool, resetHeight int64) {
-	if c.Height <= resetHeight {
-		cmn.Exit(fmt.Sprintf("reset height %d >= total height %d", resetHeight, c.Height))
-	}
-	c.resetEthBlock(resetHeight)
-
-	wal := CreateTmWal(c.walPath)
-	prival := CreateTmCfgPrival(c.cfgPath)
-	if newVersion {
-		c.resetNewBlock(resetHeight)
-		wal.ResetNewWalHeight(resetHeight)
-		prival.ResetNewPVHeight(resetHeight)
+func (ts *TmDataStore) getUpgradeLastBlockID(sHeight int64) *types.BlockID {
+	var lastBlockID *types.BlockID
+	if sHeight == 1 {
+		lastBlockID = &types.BlockID{}
 	} else {
-		c.resetOldBlock(resetHeight)
-		wal.ResetOldWalHeight(resetHeight)
-		prival.ResetOldPVHeight(resetHeight)
+		nMeta := hold.LoadNewBlockMeta(ts.nBlockDb, sHeight-1)
+		lastBlockID = &nMeta.BlockID
+	}
+
+	return lastBlockID
+}
+
+func (ts *TmDataStore) UpdateGenesisDocInStateDB() {
+	nGenFile := ts.newPath + "/config/genesis.json"
+	nGenDoc, err := types.GenesisDocFromFile(nGenFile)
+	if err == nil {
+		hold.SaveNewGenesisDoc(ts.nStateDb, nGenDoc)
 	}
 }
 
-func (c *TmDataStore) resetEthBlock(height int64) {
-	eth := CreateEthDb(c.ethDbPath)
-	defer eth.OnStop()
-
-	eth.ResetBlockHeight(height)
+func (ts *TmDataStore) upgradeStateData(height int64) {
+	cvt.SaveNewABCIResponse(ts.oStateDb, ts.nStateDb, height)
+	cvt.SaveNewConsensusParams(ts.oStateDb, ts.nStateDb, height)
+	cvt.SaveNewValidators(ts.oStateDb, ts.nStateDb, height)
 }
 
-func (c *TmDataStore) OnEvidenceRecover(newVersion bool, resetHeight int64) {
-
+func (ts *TmDataStore) saveBlock(batch dbm.Batch, block *types.Block, blockMeta *types.BlockMeta, seenCommit *types.Commit) {
+	height := block.Height
+	hold.SaveNewBlockMeta2(batch, height, blockMeta)
+	hold.SaveNewBlockParts2(batch, height, block, ts.newState)
+	hold.SaveNewCommit2(batch, height-1, "C", block.LastCommit)
+	hold.SaveNewCommit2(batch, height, "SC", seenCommit)
+	hold.SaveNewBlockStoreStateJSON2(batch, height)
 }
 
-func (c *TmDataStore) resetOldBlock(height int64) {
-	state := c.getOldState(height)
-	util.SaveOldState(c.oStateDb, state)
-
-	for i := height + 1; i <= c.Height; i++ {
-		block := cvt.LoadOldBlock(c.oBlockDb, i)
-		c.deleteOldBlock(block, state)
+func (ts *TmDataStore) OnBlockRecover(newVersion bool, resetHeight int64) {
+	if ts.totalHeight <= resetHeight {
+		cmn.Exit(fmt.Sprintf("reset height %d >= total height %d", resetHeight, ts.totalHeight))
 	}
-	json := his.BlockStoreStateJSON{Height: height}
-	cvt.SaveOldBlockStoreStateJson(c.oBlockDb, json)
-}
 
-func (c *TmDataStore) resetNewBlock(height int64) {
-	state := c.getNewState(height)
-	util.SaveNewState(c.nStateDb, state)
-
-	for i := height + 1; i <= c.Height; i++ {
-		block := util.LoadNewBlock(c.nBlockDb, i)
-		c.deleteNewBlock(block, state)
+	if !newVersion {
+		ts.resetOldBlock(resetHeight)
+	} else {
+		ts.resetNewBlock(resetHeight)
 	}
-	util.SaveNewBlockStoreStateJSON(c.nBlockDb, height)
 }
 
-func (c *TmDataStore) getOldState(height int64) *his.State {
-	state := new(his.State)
+func (ts *TmDataStore) resetOldBlock(height int64) {
+	state := ts.getOldState(height)
+	hold.SaveOldState(ts.oStateDb, state)
 
-	oState := cvt.LoadOldState(c.oStateDb)
-	lastBlock := cvt.LoadOldBlock(c.oBlockDb, height-1)
-	block := cvt.LoadOldBlock(c.oBlockDb, height)
+	for i := height + 1; i <= ts.totalHeight; i++ {
+		block := cvt.LoadOldBlock(ts.oBlockDb, i)
+		ts.deleteOldBlock(block, state)
+	}
+
+	json := otp.BlockStoreStateJSON{Height: height}
+	cvt.SaveOldBlockStoreStateJson(ts.oBlockDb, json)
+}
+
+func (ts *TmDataStore) resetNewBlock(height int64) {
+	state := ts.getNewState(height)
+	hold.SaveNewState(ts.nStateDb, state)
+
+	for i := height + 1; i <= ts.totalHeight; i++ {
+		block := hold.LoadNewBlock(ts.nBlockDb, i)
+		ts.deleteNewBlock(block, state)
+	}
+
+	hold.SaveNewBlockStoreStateJSON(ts.nBlockDb, height)
+}
+
+func (ts *TmDataStore) getOldState(height int64) *otp.State {
+	state := new(otp.State)
+
+	oState := cvt.LoadOldState(ts.oStateDb)
+	lastBlock := cvt.LoadOldBlock(ts.oBlockDb, height-1)
+	block := cvt.LoadOldBlock(ts.oBlockDb, height)
 
 	state.ChainID = block.ChainID
 	state.LastBlockHeight = lastBlock.Height
@@ -253,12 +209,12 @@ func (c *TmDataStore) getOldState(height int64) *his.State {
 	return state
 }
 
-func (c *TmDataStore) getNewState(height int64) *state.State {
+func (ts *TmDataStore) getNewState(height int64) *state.State {
 	state := new(state.State)
 
-	oState := util.LoadNewState(c.nStateDb)
-	lastBlock := util.LoadNewBlock(c.nBlockDb, height-1)
-	block := util.LoadNewBlock(c.nBlockDb, height)
+	oState := hold.LoadNewState(ts.nStateDb)
+	lastBlock := hold.LoadNewBlock(ts.nBlockDb, height-1)
+	block := hold.LoadNewBlock(ts.nBlockDb, height)
 
 	state.ChainID = block.ChainID
 	state.LastBlockHeight = lastBlock.Height
@@ -279,28 +235,30 @@ func (c *TmDataStore) getNewState(height int64) *state.State {
 	return state
 }
 
-func (c *TmDataStore) deleteOldBlock(block *his.Block, state *his.State) {
+func (ts *TmDataStore) deleteOldBlock(block *otp.Block, state *otp.State) {
 	// block
-	util.DeleteBlockMeta(false, c.oBlockDb, c.nBlockDb, block.Height)
-	util.DeleteOldBlockParts(c.oBlockDb, block, state)
-	util.DeleteCommit(false, c.oBlockDb, c.nBlockDb, block.Height)
+	hold.DeleteBlockMeta(false, ts.oBlockDb, ts.nBlockDb, block.Height)
+	hold.DeleteOldBlockParts(ts.oBlockDb, block, state)
+	hold.DeleteCommit(false, ts.oBlockDb, ts.nBlockDb, block.Height-1)
+	hold.DeleteCommit(false, ts.oBlockDb, ts.nBlockDb, block.Height)
 
 	// state
 	stateHeight := block.Height + 1
-	cvt.DeleteABCIResponse(false, c.oStateDb, c.nStateDb, block.Height)
-	cvt.DeleteConsensusParam(false, c.oStateDb, c.nStateDb, stateHeight)
-	cvt.DeleteValidator(false, c.oStateDb, c.nStateDb, stateHeight)
+	cvt.DeleteABCIResponse(false, ts.oStateDb, ts.nStateDb, block.Height)
+	cvt.DeleteConsensusParam(false, ts.oStateDb, ts.nStateDb, stateHeight)
+	cvt.DeleteValidator(false, ts.oStateDb, ts.nStateDb, stateHeight)
 }
 
-func (c *TmDataStore) deleteNewBlock(block *types.Block, state *state.State) {
+func (ts *TmDataStore) deleteNewBlock(block *types.Block, state *state.State) {
 	// block
-	util.DeleteBlockMeta(true, c.oBlockDb, c.nBlockDb, block.Height)
-	util.DeleteNewBlockParts(c.nBlockDb, block, state)
-	util.DeleteCommit(true, c.oBlockDb, c.nBlockDb, block.Height)
+	hold.DeleteBlockMeta(true, ts.oBlockDb, ts.nBlockDb, block.Height)
+	hold.DeleteNewBlockParts(ts.nBlockDb, block, state)
+	hold.DeleteCommit(true, ts.oBlockDb, ts.nBlockDb, block.Height-1)
+	hold.DeleteCommit(true, ts.oBlockDb, ts.nBlockDb, block.Height)
 
 	// state
 	stateHeight := block.Height + 1
-	cvt.DeleteABCIResponse(true, c.oStateDb, c.nStateDb, block.Height)
-	cvt.DeleteConsensusParam(true, c.oStateDb, c.nStateDb, stateHeight)
-	cvt.DeleteValidator(true, c.oStateDb, c.nStateDb, stateHeight)
+	cvt.DeleteABCIResponse(true, ts.oStateDb, ts.nStateDb, block.Height)
+	cvt.DeleteConsensusParam(true, ts.oStateDb, ts.nStateDb, stateHeight)
+	cvt.DeleteValidator(true, ts.oStateDb, ts.nStateDb, stateHeight)
 }

@@ -1,8 +1,9 @@
 package cli
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/commis/tm-tools/libs/log"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,9 +38,9 @@ func (e Executor) Execute() error {
 	err := e.Command.Execute()
 	if err != nil {
 		if viper.GetBool(TraceFlag) {
-			fmt.Fprintf(os.Stderr, "ERROR: %+v\n", err)
+			log.Infof("ERROR: %+v", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			log.Infof("ERROR: %v", err)
 		}
 
 		// return error code 1 by default, can override it with a special error type

@@ -1,0 +1,92 @@
+package consensus
+
+import (
+	"encoding/binary"
+	"hash/crc32"
+	"io"
+	"time"
+    "github.com/tendermint/tendermint/p2p"
+	cst "github.com/tendermint/tendermint/consensus/types"
+	"github.com/tendermint/tendermint/types"
+)
+
+type WALEncoderExt struct {
+	wr io.Writer
+}
+
+func NewWALEncoderExt(wr io.Writer) *WALEncoderExt {
+	return &WALEncoderExt{wr}
+}
+
+// Encode writes the custom encoding of v to the stream.
+func (enc *WALEncoderExt) Encode(v *TimedWALMessage) error {
+	data := cdc.MustMarshalBinaryBare(v)
+
+	crc := crc32.Checksum(data, crc32c)
+	length := uint32(len(data))
+	totalLength := 8 + int(length)
+
+	msg := make([]byte, totalLength)
+	binary.BigEndian.PutUint32(msg[0:4], crc)
+	binary.BigEndian.PutUint32(msg[4:8], length)
+	copy(msg[8:], data)
+
+	_, err := enc.wr.Write(msg)
+
+	return err
+}
+
+func CvtMsgInfo(msg ConsensusMessage, peer p2p.ID) WALMessage {
+	return &msgInfo{Msg: msg, PeerID: peer}
+}
+
+func CvtTimeoutInfo(d time.Duration, height int64, round int, step cst.RoundStepType) WALMessage {
+	return &timeoutInfo{
+		Duration: d,
+		Height:   height,
+		Round:    round,
+		Step:     step,
+	}
+}
+
+func FilterBlockWalMessage(height int64, msg WALMessage) bool {
+	switch m := msg.(type) {
+	case EndHeightMessage:
+		return m.Height >= height
+	case types.EventDataRoundState:
+		if m.Step == cst.RoundStepNewHeight.String() {
+			return m.Height > height
+		}
+		return m.Height >= height
+	case timeoutInfo:
+		return m.Height >= height
+	case msgInfo:
+		switch mi := m.Msg.(type) {
+		case *BlockPartMessage:
+			return mi.Height >= height
+		case *CommitStepMessage:
+			return mi.Height >= height
+		case *HasVoteMessage:
+			return mi.Height >= height
+		case *NewRoundStepMessage:
+			return mi.Height >= height
+		case *ProposalHeartbeatMessage:
+			return mi.Heartbeat.Height >= height
+		case *ProposalMessage:
+			return mi.Proposal.Height >= height
+		case *ProposalPOLMessage:
+			return mi.Height >= height
+		case *VoteMessage:
+			return mi.Vote.Height >= height
+		case *VoteSetBitsMessage:
+			return mi.Height >= height
+		case *VoteSetMaj23Message:
+			return mi.Height >= height
+		default:
+			break
+		}
+		break
+	}
+
+	return false
+}
