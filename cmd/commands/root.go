@@ -1,13 +1,19 @@
 package commands
 
 import (
+	"fmt"
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/commis/tm-tools/libs/cli"
 	"github.com/commis/tm-tools/libs/log"
 	"github.com/spf13/cobra"
+	cmn "github.com/tendermint/tendermint/libs/common"
 )
 
 var (
-	config = cli.DefaultConfig()
+	debugPort = 39999
+	config    = cli.DefaultConfig()
 )
 
 func init() {
@@ -28,6 +34,18 @@ var RootCmd = &cobra.Command{
 
 		log.Log.SetDebugLevel(cli.DefaultLogLevel())
 
+		startPerformanceTracePort()
+
 		return nil
 	},
+}
+
+func startPerformanceTracePort() {
+	go func() {
+		err := http.ListenAndServe(fmt.Sprintf(":%d", debugPort), nil)
+		if err != nil {
+			cmn.Exit(fmt.Sprintf("failed to listen debug port: %v", err))
+		}
+		log.Infof("start performance trace port: %d", debugPort)
+	}()
 }
