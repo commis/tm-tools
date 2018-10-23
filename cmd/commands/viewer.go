@@ -36,8 +36,7 @@ type ViewParam struct {
 var vp = &ViewParam{}
 
 func init() {
-	ViewDatabaseCmd.Flags().StringVar(&vp.dbPath, "db", "/home/tendermint/data/blockstore",
-		"Database full path for the viewer")
+	ViewDatabaseCmd.Flags().StringVar(&vp.dbPath, "db", "/home/tendermint/data/blockstore", "tendermint path")
 	ViewDatabaseCmd.Flags().StringVar(&vp.action, "a", "get", "Operate database for [get|getall|block]")
 	ViewDatabaseCmd.Flags().StringVar(&vp.key, "q", "", "Database query key")
 	ViewDatabaseCmd.Flags().BoolVar(&vp.ver, "v", false, "Whether new version data")

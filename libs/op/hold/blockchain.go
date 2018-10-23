@@ -256,8 +256,9 @@ func SaveNewCommit2(batch db.Batch, height int64, prefix string, commit *types.C
 }
 
 func DeleteCommit(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
+	lastHeight := height - 1
 	if newVer {
-		if key := calcBlockCommitKey(height); ndb.Has(key) {
+		if key := calcBlockCommitKey(lastHeight); ndb.Has(key) {
 			ndb.DeleteSync(key)
 		}
 
@@ -265,7 +266,7 @@ func DeleteCommit(newVer bool, ldb dbm.DB, ndb db.DB, height int64) {
 			ndb.DeleteSync(key)
 		}
 	} else {
-		if key := calcBlockCommitKey(height); ldb.Has(key) {
+		if key := calcBlockCommitKey(lastHeight); ldb.Has(key) {
 			ldb.DeleteSync(key)
 		}
 

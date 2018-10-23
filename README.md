@@ -83,11 +83,7 @@ peer1
     └── data
         ├── blockstore.db
         ├── cs.wal
-        ├── evidence.db
-        ├── mempool.wal
         ├── state.db
-        ├── trusthistory.db
-        └── tx_index.db
 ```
 
 

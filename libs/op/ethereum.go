@@ -73,15 +73,15 @@ func (te *TmEthDb) PrintHeader() {
 	hash := core.GetHeadBlockHash(te.db)
 	number := core.GetBlockNumber(te.db, hash)
 	log.Infof("print header number: %d ===\n", number)
-	log.Infof("  %s\n", core.GetHeadHeaderHash(te.db).String())    //headHeaderKey
-	log.Infof("  %s\n", core.GetHeadBlockHash(te.db).String())     //headBlockKey
-	log.Infof("  %s\n", core.GetHeadFastBlockHash(te.db).String()) //headFastKey
+	log.Infof("  %s", core.GetHeadHeaderHash(te.db).String())    //headHeaderKey
+	log.Infof("  %s", core.GetHeadBlockHash(te.db).String())     //headBlockKey
+	log.Infof("  %s", core.GetHeadFastBlockHash(te.db).String()) //headFastKey
 }
 
 func (te *TmEthDb) getLastHeader() uint64 {
 	hash := core.GetHeadBlockHash(te.db)
 	number := core.GetBlockNumber(te.db, hash)
-	log.Infof("header: %d %s\n", number, hash.String())
+	log.Infof("header: %d %s", number, hash.String())
 
 	return number
 }
@@ -90,18 +90,18 @@ func (te *TmEthDb) setHeader(height uint64) {
 	var err error
 	hash := core.GetCanonicalHash(te.db, height)
 	if err = core.WriteCanonicalHash(te.db, hash, height); err != nil {
-		log.Errorf("write canonical hash failed.%d %s\n", height, hash.String())
+		log.Errorf("write canonical hash failed.%d %s", height, hash.String())
 	}
 
 	if err = core.WriteHeadHeaderHash(te.db, hash); err != nil {
-		log.Errorf("write head header hash failed.%d %s\n", height, hash.String())
+		log.Errorf("write head header hash failed.%d %s", height, hash.String())
 	}
 
 	if err = core.WriteHeadBlockHash(te.db, hash); err != nil {
-		log.Errorf("write head block hash failed.%d %s\n", height, hash.String())
+		log.Errorf("write head block hash failed.%d %s", height, hash.String())
 	}
 
 	if err = core.WriteHeadFastBlockHash(te.db, hash); err != nil {
-		log.Errorf("write canonical hash failed.%d %s\n", height, hash.String())
+		log.Errorf("write canonical hash failed.%d %s", height, hash.String())
 	}
 }

@@ -239,7 +239,6 @@ func (ts *TmDataStore) deleteOldBlock(block *otp.Block, state *otp.State) {
 	// block
 	hold.DeleteBlockMeta(false, ts.oBlockDb, ts.nBlockDb, block.Height)
 	hold.DeleteOldBlockParts(ts.oBlockDb, block, state)
-	hold.DeleteCommit(false, ts.oBlockDb, ts.nBlockDb, block.Height-1)
 	hold.DeleteCommit(false, ts.oBlockDb, ts.nBlockDb, block.Height)
 
 	// state
@@ -253,7 +252,6 @@ func (ts *TmDataStore) deleteNewBlock(block *types.Block, state *state.State) {
 	// block
 	hold.DeleteBlockMeta(true, ts.oBlockDb, ts.nBlockDb, block.Height)
 	hold.DeleteNewBlockParts(ts.nBlockDb, block, state)
-	hold.DeleteCommit(true, ts.oBlockDb, ts.nBlockDb, block.Height-1)
 	hold.DeleteCommit(true, ts.oBlockDb, ts.nBlockDb, block.Height)
 
 	// state
