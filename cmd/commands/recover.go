@@ -17,7 +17,7 @@ type RecoverParam struct {
 var rp = &RecoverParam{}
 
 func init() {
-	ResetBlockCmd.Flags().StringVar(&rp.dataPath, "db", "/home/tendermint", "Directory of tendermint data")
+	ResetBlockCmd.Flags().StringVar(&rp.dataPath, "db", "/home/tendermint", "tendermint path")
 	ResetBlockCmd.Flags().BoolVar(&rp.ver, "v", false, "Whether new version data")
 	ResetBlockCmd.Flags().Int64Var(&rp.height, "h", 0, "Recover block height")
 }
@@ -36,18 +36,15 @@ func resetBlockHeight(cmd *cobra.Command, args []string) error {
 	//01.recover ethereum height
 	op.ResetEthHeight(rp.dataPath, rp.height)
 
-	tdStore := op.CreateTmDataStore(mp.oldData, mp.newData)
-	defer tdStore.OnStop()
-
 	var tmDataStore *op.TmDataStore
 	if rp.ver {
-		op.ResetPrivValHeight(op.TMVer0180, rp.dataPath, rp.height)
-		op.ResetNodeWalHeight(op.TMVer0180, rp.dataPath, rp.height)
+		op.ResetPrivValHeight(op.TMVer0231, rp.dataPath, rp.height)
+		op.ResetNodeWalHeight(op.TMVer0231, rp.dataPath, rp.height)
 
 		tmDataStore = op.CreateTmDataStore("", rp.dataPath)
 	} else {
-		op.ResetPrivValHeight(op.TMVer0231, rp.dataPath, rp.height)
-		op.ResetNodeWalHeight(op.TMVer0231, rp.dataPath, rp.height)
+		op.ResetPrivValHeight(op.TMVer0180, rp.dataPath, rp.height)
+		op.ResetNodeWalHeight(op.TMVer0180, rp.dataPath, rp.height)
 
 		tmDataStore = op.CreateTmDataStore(rp.dataPath, "")
 	}

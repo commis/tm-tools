@@ -15,8 +15,8 @@ type MigrateParam struct {
 var mp = &MigrateParam{}
 
 func init() {
-	MigrateDataCmd.Flags().StringVar(&mp.oldData, "old", "/home/tendermint", "Directory of old tendermint data")
-	MigrateDataCmd.Flags().StringVar(&mp.newData, "new", "/home/tendermint.new", "Directory of new tendermint data")
+	MigrateDataCmd.Flags().StringVar(&mp.oldData, "old", "/home/tendermint", "old tendermint path")
+	MigrateDataCmd.Flags().StringVar(&mp.newData, "new", "/home/tendermint.new", "new tendermint path")
 	MigrateDataCmd.Flags().Int64Var(&mp.height, "h", 1, "Migrate the start block height")
 }
 
@@ -45,9 +45,7 @@ func migrateData(cmd *cobra.Command, args []string) error {
 		tmStore.GetTotalHeight(false)
 		if needUpgrade = tmStore.CheckNeedUpgrade(tmCfg.GetTopPrivVal()); needUpgrade {
 			tmStore.OnBlockStore(mp.height)
-		} /*else {
-			tmStore.UpdateGenesisDocInStateDB()
-		}*/
+		}
 	}()
 
 	//03.upgrade cs.wal file

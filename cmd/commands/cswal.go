@@ -13,7 +13,7 @@ type CsWalParameter struct {
 var cw = &CsWalParameter{}
 
 func init() {
-	ViewWalCmd.Flags().StringVar(&cw.tmPath, "p", "/home/tendermint/data/cs.wal/wal", "wal full path for the viewer")
+	ViewWalCmd.Flags().StringVar(&cw.tmPath, "p", "/home/tendermint", "tendermint path")
 	ViewWalCmd.Flags().BoolVar(&cw.ver, "v", false, "Whether new version data")
 }
 

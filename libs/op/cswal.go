@@ -13,11 +13,15 @@ import (
 	"github.com/tendermint/tendermint/consensus"
 	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/db"
+	dbm "github.com/tendermint/tmlibs/db"
 )
 
 func UpgradeNodeCsWal(oTmPath, nTmPath string) {
 	tmWal := CreateTmCsWal(oTmPath, nTmPath)
-	defer CloseDb(tmWal.blockDb)
+	defer func() {
+		CloseDbm(tmWal.oBlockDb)
+		CloseDb(tmWal.nBlockDb)
+	}()
 
 	tmWal.upgradeMessage()
 }
@@ -34,7 +38,10 @@ func ResetNodeWalHeight(ver TMVersionType, tmPath string, height int64) {
 	}
 
 	if tmWal != nil {
-		defer CloseDb(tmWal.blockDb)
+		defer func() {
+			CloseDbm(tmWal.oBlockDb)
+			CloseDb(tmWal.nBlockDb)
+		}()
 		tmWal.ResetHeight(height)
 	}
 }
@@ -51,7 +58,10 @@ func PrintWalMessage(ver TMVersionType, tmPath string) {
 	}
 
 	if tmWal != nil {
-		defer CloseDb(tmWal.blockDb)
+		defer func() {
+			CloseDbm(tmWal.oBlockDb)
+			CloseDb(tmWal.nBlockDb)
+		}()
 		tmWal.PrintWalMessage()
 	}
 }
@@ -62,7 +72,8 @@ type TmCsWal struct {
 	data    string
 	memPool string
 
-	blockDb db.DB
+	oBlockDb dbm.DB
+	nBlockDb db.DB
 }
 
 func CreateTmCsWal(oTmPath, nTmPath string) *TmCsWal {
@@ -79,12 +90,13 @@ func CreateTmCsWal(oTmPath, nTmPath string) *TmCsWal {
 
 	if oTmPath != "" {
 		tmWal.oldPath = oTmPath + dt
+		tmWal.oBlockDb = dbm.NewDB("blockstore", dbm.LevelDBBackend, tmWal.oldPath)
 	}
 
 	if nTmPath != "" {
 		tmWal.newPath = nTmPath + dt
 		util.CreateDirAll(tmWal.newPath + wal)
-		tmWal.blockDb = db.NewDB("blockstore", db.LevelDBBackend, tmWal.newPath)
+		tmWal.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, tmWal.newPath)
 	}
 
 	return tmWal
@@ -103,8 +115,8 @@ func (tm *TmCsWal) upgradeMessage() {
 	dec := ocs.NewWALDecoder(rd)
 	enc := consensus.NewWALEncoderExt(wd)
 
-	height := hold.LoadNewBlockHeight(tm.blockDb)
-	bw := ocs.CreateBlockCsWal(tm.blockDb)
+	height := hold.LoadNewBlockHeight(tm.nBlockDb)
+	bw := ocs.CreateBlockCsWal(tm.nBlockDb)
 	for {
 		msg, err := dec.Decode()
 		if err == io.EOF {
@@ -145,15 +157,15 @@ func (tm *TmCsWal) PrintWalMessage() {
 }
 
 func (tm *TmCsWal) resetOldWalHeight(height int64) {
-	oldWal := tm.getWalFile(tm.oldPath)
-	newWal := tm.getWalFile(tm.newPath) + ".new"
+	walFile := tm.getWalFile(tm.oldPath)
+	tmpWalFile := tm.getWalFile(tm.oldPath) + ".tmp"
 
-	rd, wd, err := tm.openWalFile(oldWal, newWal)
+	rd, wd, err := tm.openWalFile(walFile, tmpWalFile)
 	if err != nil {
 		return
 	}
 	defer func() {
-		util.Rename(oldWal, newWal)
+		util.Rename(walFile, tmpWalFile)
 		os.RemoveAll(tm.oldPath + tm.memPool)
 	}()
 
@@ -181,16 +193,16 @@ func (tm *TmCsWal) resetOldWalHeight(height int64) {
 }
 
 func (tm *TmCsWal) resetNewWalHeight(height int64) {
-	oldWal := tm.getWalFile(tm.oldPath)
-	newWal := tm.getWalFile(tm.newPath) + ".new"
+	walFile := tm.getWalFile(tm.newPath)
+	tmpWalFile := tm.getWalFile(tm.newPath) + ".tmp"
 
-	rd, wd, err := tm.openWalFile(oldWal, newWal)
+	rd, wd, err := tm.openWalFile(walFile, tmpWalFile)
 	if err != nil {
 		return
 	}
 	defer func() {
-		util.Rename(oldWal, newWal)
-		os.RemoveAll(tm.oldPath + tm.memPool)
+		util.Rename(walFile, tmpWalFile)
+		os.RemoveAll(tm.newPath + tm.memPool)
 	}()
 
 	lastHeight := height + 1

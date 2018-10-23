@@ -1,16 +1,22 @@
 #!/bin/bash
 
-# set -eux
+# set -e
 
 ROOT_PATH=$(cd $(dirname $0) && pwd)
 
 # copy code to tendermint dir
-dir="${GOPATH}/src/github.com/tendermint/tendermint/consensus"
-if [ -d "${dir}" ]; then
-    newFile=${dir}/wal_up.go
-    cp -f ${ROOT_PATH}/libs/cli/wal_up.new ${newFile}
-    chmod 777 ${newFile}
-fi
+function copy_code() {
+    curr=$(pwd)
+    tagdir=$1
+
+    if [ -d "${tagdir}" ]; then
+        newFile=${tagdir}/wal_up.go
+        cp -f ${ROOT_PATH}/libs/cli/wal_up.new ${newFile}
+        chmod 777 ${newFile}
+    fi
+}
+copy_code ${GOPATH}/src/github.com/tendermint/tendermint/consensus
+copy_code ${GOPATH}/src/github.com/commis/tm-tools/vendor/github.com/tendermint/tendermint/consensus
 
 go build -o "bin/tm_tools" cmd/*.go
 
@@ -20,8 +26,12 @@ if [ -f "bin/tm_tools" ]; then
 fi
 
 # copy to test tools
-testdir=${ROOT_PATH}/../tm-network/tools/0.23.1
-if [ -d ${testdir} ]; then
-    cp -f ${ROOT_PATH}/bin/tm_tools ${testdir}/tm_tools
-    chmod 777 ${testdir}/tm_tools
-fi
+function copy_dist() {
+    testdir=$1
+
+    if [ -d ${testdir} ]; then
+        cp -f ${ROOT_PATH}/bin/tm_tools ${testdir}/tm_tools
+        chmod 777 ${testdir}/tm_tools
+    fi
+}
+copy_dist "${ROOT_PATH}/../tm-network/tools/0.23.1"
