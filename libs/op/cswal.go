@@ -10,6 +10,7 @@ import (
 	"github.com/commis/tm-tools/libs/op/hold"
 	"github.com/commis/tm-tools/libs/util"
 	ocs "github.com/commis/tm-tools/oldver/consensus"
+	cvt "github.com/commis/tm-tools/oldver/convert"
 	"github.com/tendermint/tendermint/consensus"
 	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/db"
@@ -26,17 +27,19 @@ func UpgradeNodeCsWal(oTmPath, nTmPath string) {
 	tmWal.upgradeMessage()
 }
 
-func ResetNodeWalHeight(ver TMVersionType, tmPath string, height int64) {
+func createTmCsWalByVersion(ver TMVersionType, tmPath string) *TmCsWal {
 	var tmWal *TmCsWal = nil
 	switch ver {
 	case TMVer0180:
 		tmWal = CreateTmCsWal(tmPath, "")
-		break
 	case TMVer0231:
 		tmWal = CreateTmCsWal("", tmPath)
-		break
 	}
+	return tmWal
+}
 
+func ResetNodeWalHeight(ver TMVersionType, tmPath string, height int64) {
+	tmWal := createTmCsWalByVersion(ver, tmPath)
 	if tmWal != nil {
 		defer func() {
 			CloseDbm(tmWal.oBlockDb)
@@ -47,16 +50,7 @@ func ResetNodeWalHeight(ver TMVersionType, tmPath string, height int64) {
 }
 
 func PrintWalMessage(ver TMVersionType, tmPath string) {
-	var tmWal *TmCsWal = nil
-	switch ver {
-	case TMVer0180:
-		tmWal = CreateTmCsWal(tmPath, "")
-		break
-	case TMVer0231:
-		tmWal = CreateTmCsWal("", tmPath)
-		break
-	}
-
+	tmWal := createTmCsWalByVersion(ver, tmPath)
 	if tmWal != nil {
 		defer func() {
 			CloseDbm(tmWal.oBlockDb)
@@ -66,7 +60,19 @@ func PrintWalMessage(ver TMVersionType, tmPath string) {
 	}
 }
 
+func InitWalMessage(ver TMVersionType, tmPath string) {
+	tmWal := createTmCsWalByVersion(ver, tmPath)
+	if tmWal != nil {
+		defer func() {
+			CloseDbm(tmWal.oBlockDb)
+			CloseDb(tmWal.nBlockDb)
+		}()
+		tmWal.InitWalMessage()
+	}
+}
+
 type TmCsWal struct {
+	tmPath  string
 	oldPath string
 	newPath string
 	data    string
@@ -89,11 +95,13 @@ func CreateTmCsWal(oTmPath, nTmPath string) *TmCsWal {
 	}
 
 	if oTmPath != "" {
+		tmWal.tmPath = oTmPath
 		tmWal.oldPath = oTmPath + dt
 		tmWal.oBlockDb = dbm.NewDB("blockstore", dbm.LevelDBBackend, tmWal.oldPath)
 	}
 
 	if nTmPath != "" {
+		tmWal.tmPath = nTmPath
 		tmWal.newPath = nTmPath + dt
 		util.CreateDirAll(tmWal.newPath + wal)
 		tmWal.nBlockDb = db.NewDB("blockstore", db.LevelDBBackend, tmWal.newPath)
@@ -156,6 +164,18 @@ func (tm *TmCsWal) PrintWalMessage() {
 	}
 }
 
+func (tm *TmCsWal) InitWalMessage() {
+	if tm.oldPath != "" {
+		height := cvt.LoadOldTotalHeight(tm.oBlockDb)
+		ResetPrivValHeight(TMVer0180, tm.tmPath, height)
+		tm.resetOldWalHeight(height)
+	} else if tm.newPath != "" {
+		height := hold.LoadNewBlockHeight(tm.nBlockDb)
+		ResetPrivValHeight(TMVer0231, tm.tmPath, height)
+		tm.resetNewWalHeight(height)
+	}
+}
+
 func (tm *TmCsWal) resetOldWalHeight(height int64) {
 	walFile := tm.getWalFile(tm.oldPath)
 	tmpWalFile := tm.getWalFile(tm.oldPath) + ".tmp"
@@ -172,6 +192,7 @@ func (tm *TmCsWal) resetOldWalHeight(height int64) {
 	lastHeight := height + 1
 	dec := ocs.NewWALDecoder(rd)
 	enc := ocs.NewWALEncoder(wd)
+	bw := ocs.CreateBlockCsWal(tm.nBlockDb)
 	for {
 		msg, err := dec.Decode()
 		if err == io.EOF {
@@ -185,6 +206,7 @@ func (tm *TmCsWal) resetOldWalHeight(height int64) {
 			continue
 		}
 
+		bw.UpdateOldVoteToPrivVal(msg)
 		if err := enc.Encode(msg); err != nil {
 			log.Errorf("failed to encode msg: %v", err)
 			return
@@ -208,6 +230,7 @@ func (tm *TmCsWal) resetNewWalHeight(height int64) {
 	lastHeight := height + 1
 	dec := consensus.NewWALDecoder(rd)
 	enc := consensus.NewWALEncoderExt(wd)
+	bw := ocs.CreateBlockCsWal(tm.nBlockDb)
 	for {
 		msg, err := dec.Decode()
 		if err == io.EOF {
@@ -221,6 +244,7 @@ func (tm *TmCsWal) resetNewWalHeight(height int64) {
 			continue
 		}
 
+		bw.UpdateNewVoteToPrivVal(msg)
 		if err := enc.Encode(msg); err != nil {
 			log.Errorf("failed to encode msg: %v", err)
 			return

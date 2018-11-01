@@ -45,10 +45,7 @@ func FilterWalMessage(height int64, msg WALMessage) bool {
 			return mi.Height >= height
 		case *VoteSetMaj23Message:
 			return mi.Height >= height
-		default:
-			break
 		}
-		break
 	}
 
 	return false
@@ -56,7 +53,6 @@ func FilterWalMessage(height int64, msg WALMessage) bool {
 
 type BlockCsWal struct {
 	blockDb db.DB
-	//csMessage map[ConsensusMessage]interface{}
 }
 
 func CreateBlockCsWal(ldb db.DB) *BlockCsWal {
@@ -70,58 +66,68 @@ func (bc *BlockCsWal) ConvertWalMessage(message *TimedWALMessage) *consensus.Tim
 	switch m := message.Msg.(type) {
 	case EndHeightMessage:
 		msg = &consensus.EndHeightMessage{Height: m.Height}
-		break
 	case otp.EventDataRoundState:
 		msg = &types.EventDataRoundState{Height: m.Height, Round: m.Round, Step: m.Step}
-		break
 	case timeoutInfo:
 		msg = consensus.CvtTimeoutInfo(m.Duration, m.Height, m.Round, m.Step)
-		break
 	case msgInfo:
 		var csMsg consensus.ConsensusMessage = nil
 		switch mi := m.Msg.(type) {
 		case *BlockPartMessage:
 			csMsg = bc.cvtBlockPartMsg(mi)
-			break
 		case *CommitStepMessage:
 			msg = bc.cvtCommitStepMsg(mi)
-			break
 		case *HasVoteMessage:
 			msg = bc.cvtHasVoteMsg(mi)
-			break
 		case *NewRoundStepMessage:
 			msg = bc.cvtNewRoundStepMsg(mi)
-			break
 		case *ProposalHeartbeatMessage:
 			msg = bc.cvtProposalHeartbeatMsg(mi)
-			break
 		case *ProposalMessage:
 			msg = bc.cvtProposalMsg(mi, m.PeerID)
-			break
 		case *ProposalPOLMessage:
 			msg = bc.cvtProposalPolMsg(mi)
-			break
 		case *VoteMessage:
 			msg = bc.cvtVoteMsg(mi)
-			break
 		case *VoteSetBitsMessage:
 			msg = bc.cvtVoteSetBitsMsg(mi)
-			break
 		case *VoteSetMaj23Message:
 			msg = bc.cvtVoteSetMaj23Msg(mi)
-			break
 		}
 
 		if csMsg != nil {
 			msg = consensus.CvtMsgInfo(csMsg, m.PeerID)
 		}
-		break
 	}
 
 	if msg != nil {
 		return &consensus.TimedWALMessage{Time: message.Time, Msg: msg}
 	}
 	return nil
+}
+
+func (bc *BlockCsWal) UpdateOldVoteToPrivVal(message *TimedWALMessage) {
+	switch m := message.Msg.(type) {
+	case msgInfo:
+		switch mi := m.Msg.(type) {
+		case *ProposalMessage:
+			bc.updateOldProposalMsg(mi, m.PeerID)
+		case *VoteMessage:
+			bc.updateOldVoteMsg(mi)
+		}
+	}
+}
+
+func (bc *BlockCsWal) UpdateNewVoteToPrivVal(message *consensus.TimedWALMessage) {
+	switch m := message.Msg.(type) {
+	case msgInfo:
+		switch mi := m.Msg.(type) {
+		case *consensus.ProposalMessage:
+			bc.updateNewProposalMsg(mi, m.PeerID)
+		case *consensus.VoteMessage:
+			bc.updateNewVoteMsg(mi)
+		}
+	}
 }
 
 //// convert function ////
@@ -219,6 +225,22 @@ func (bc *BlockCsWal) cvtProposalMsg(old *ProposalMessage, peer p2p.ID) consensu
 	return nil
 }
 
+func (bc *BlockCsWal) updateOldProposalMsg(old *ProposalMessage, peer p2p.ID) {
+	if peer != "" {
+		nodePv := store.GetNodePrivByPeer(string(peer))
+		height, round, step := old.Proposal.Height, old.Proposal.Round, store.StepPropose
+		signBytes := old.Proposal.SignBytes(nodePv.ChainID)
+		nodePv.SaveOldSigned(height, round, step, signBytes, old.Proposal.Signature)
+	}
+}
+
+func (bc *BlockCsWal) updateNewProposalMsg(msg *consensus.ProposalMessage, peer p2p.ID) {
+	if peer != "" {
+		nodePv := store.GetNodePrivByPeer(string(peer))
+		nodePv.SignProposal(nodePv.ChainID, msg.Proposal)
+	}
+}
+
 func (bc *BlockCsWal) cvtProposalPolMsg(old *ProposalPOLMessage) consensus.ConsensusMessage {
 	commit := bc.getCommit(old.Height)
 	if commit != nil {
@@ -242,6 +264,20 @@ func (bc *BlockCsWal) cvtVoteMsg(old *VoteMessage) consensus.ConsensusMessage {
 	}
 
 	return nil
+}
+
+func (bc *BlockCsWal) updateOldVoteMsg(old *VoteMessage) {
+	nodePv := store.GetNodePrivByAddress(old.Vote.ValidatorAddress.String())
+	height, round, step := old.Vote.Height, old.Vote.Round, nodePv.VoteToStep(old.Vote.Type)
+	signBytes := old.Vote.SignBytes(nodePv.ChainID)
+	nodePv.SaveOldSigned(height, round, step, signBytes, old.Vote.Signature)
+}
+
+func (bc *BlockCsWal) updateNewVoteMsg(old *consensus.VoteMessage) {
+	nodePv := store.GetNodePrivByAddress(old.Vote.ValidatorAddress.String())
+	height, round, step := old.Vote.Height, old.Vote.Round, nodePv.VoteToStep(old.Vote.Type)
+	signBytes := old.Vote.SignBytes(nodePv.ChainID)
+	nodePv.SaveSigned(height, round, step, signBytes, old.Vote.Signature)
 }
 
 func (bc *BlockCsWal) cvtVoteSetBitsMsg(old *VoteSetBitsMessage) consensus.ConsensusMessage {

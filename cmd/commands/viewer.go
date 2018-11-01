@@ -58,13 +58,10 @@ func viewDatabase(cmd *cobra.Command, args []string) error {
 	switch vp.action {
 	case "get":
 		holder.GetDataByKey()
-		break
 	case "getall":
 		holder.GetAllRecordKeys()
-		break
 	case "block":
 		holder.GetBlock()
-		break
 	default:
 		cmn.Exit(fmt.Sprintf("action is invalid '%s'", vp.action))
 	}
@@ -115,13 +112,10 @@ func (d *DbHandler) GetDataByKey() {
 	switch vp.key {
 	case hold.StateKey:
 		d.loadState()
-		break
 	case hold.GenesisDoc:
 		d.loadGenesisDoc()
-		break
 	case hold.BlockStoreKey:
 		d.loadBlockStore()
-		break
 	default:
 		p := strings.Split(vp.key, ":")
 		if len(p) >= 2 {
@@ -130,26 +124,19 @@ func (d *DbHandler) GetDataByKey() {
 			switch firstKey {
 			case "H":
 				d.loadBlockMeta(height)
-				break
 			case "P":
 				index, _ := strconv.Atoi(p[2])
 				d.loadBlockPart(height, index)
-				break
 			case "C":
 				d.loadBlockCommit(height, firstKey)
-				break
 			case "SC":
 				d.loadBlockCommit(height, firstKey)
-				break
 			case hold.ABCIResponsesKey:
 				d.loadABCIResponse(height)
-				break
 			case hold.ConsensusParamsKey:
 				d.loadConsensusParam(height)
-				break
 			case hold.ValidatorsKey:
 				d.loadValidator(height)
-				break
 			default:
 				fmt.Println(string(data))
 			}

@@ -82,10 +82,7 @@ func FilterBlockWalMessage(height int64, msg WALMessage) bool {
 			return mi.Height >= height
 		case *VoteSetMaj23Message:
 			return mi.Height >= height
-		default:
-			break
 		}
-		break
 	}
 
 	return false

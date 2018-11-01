@@ -1,6 +1,8 @@
 package op
 
 import (
+	"strconv"
+
 	"github.com/commis/tm-tools/libs/log"
 	"github.com/commis/tm-tools/libs/util"
 	"github.com/ethereum/go-ethereum/core"
@@ -37,7 +39,13 @@ func CreateTmEthDb(tmPath string) *TmEthDb {
 }
 
 func (te *TmEthDb) ResetHeight(height int64) {
-	endNumber := uint64(height)
+	//转换失败直接终止程序
+	strHeight := strconv.FormatInt(height, 10)
+	endNumber, err := strconv.ParseUint(strHeight, 10, 0)
+	if err != nil {
+		cmn.Exit(err.Error())
+		return
+	}
 	totalHeight := te.getLastHeader()
 
 	for i := totalHeight; i > endNumber; i-- {

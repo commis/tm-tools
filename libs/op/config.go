@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/tendermint/tendermint/state"
+
 	"github.com/commis/tm-tools/libs/log"
 	"github.com/commis/tm-tools/libs/op/store"
 	"github.com/commis/tm-tools/libs/util"
@@ -18,10 +20,8 @@ func ResetPrivValHeight(ver TMVersionType, tmPath string, height int64) {
 	switch ver {
 	case TMVer0180:
 		tm = CreateTmConfig(tmPath, "")
-		break
 	case TMVer0231:
 		tm = CreateTmConfig("", tmPath)
-		break
 	}
 
 	if tm != nil {
@@ -83,14 +83,14 @@ func (tm *TmConfig) UpgradeAllGenesisAndPvFile() {
 			opv := otp.LoadPrivValidator(oPvFile)
 
 			nPrivVal = privval.LoadFilePV(nPvFile)
-			store.AddNodePriv(opv.Address.String(), oGen.ChainID, nPrivVal)
+			store.AddNodePriv(opv.Address.String(), oGen.ChainID, nPrivVal, nil)
 		} else {
 			util.CreateDirAll(tm.getTmDir(tm.newPath, node, tm.config))
 
 			var oldAddress string
 			chainID := cvt.UpgradeGenesisJSON(oGenFile, nGenFile)
 			oldAddress, nPrivVal = cvt.UpgradePrivValidatorJson(oPvFile, nPvFile)
-			store.AddNodePriv(oldAddress, chainID, nPrivVal)
+			store.AddNodePriv(oldAddress, chainID, nPrivVal, nil)
 
 			util.CreateDirAll(flagFile)
 		}
@@ -107,20 +107,17 @@ func (tm *TmConfig) UpgradeAllGenesisAndPvFile() {
 func (tm *TmConfig) UpdateAllPrivValFile() {
 	nodes := util.GetChildDir(tm.oldPath)
 	for _, node := range nodes {
-		flagFile := tm.getFilePath(tm.newPath, node, ".config")
-		if util.Exist(flagFile) {
-			nPvFile := tm.getFilePath(tm.newPath, node, tm.privVal)
-			nPrivVal := privval.LoadFilePV(nPvFile)
+		nPvFile := tm.getFilePath(tm.newPath, node, tm.privVal)
+		nPrivVal := privval.LoadFilePV(nPvFile)
 
-			//update last vote info
-			nPrivVal.LastHeight = tm.maxPrivVal.LastHeight
-			nPrivVal.LastRound = tm.maxPrivVal.LastRound
-			nPrivVal.LastStep = tm.maxPrivVal.LastStep
-			nPrivVal.LastSignature = tm.maxPrivVal.LastSignature
-			nPrivVal.LastSignBytes = tm.maxPrivVal.LastSignBytes
+		//update last vote info
+		nPrivVal.LastHeight = tm.maxPrivVal.LastHeight
+		nPrivVal.LastRound = tm.maxPrivVal.LastRound
+		nPrivVal.LastStep = tm.maxPrivVal.LastStep
+		nPrivVal.LastSignature = tm.maxPrivVal.LastSignature
+		nPrivVal.LastSignBytes = tm.maxPrivVal.LastSignBytes
 
-			nPrivVal.Save()
-		}
+		nPrivVal.Save()
 	}
 	tm.saveMaxHeightNode()
 }
@@ -160,31 +157,37 @@ func (tm *TmConfig) getFilePath(rootPath, node, fileName string) string {
 func (tm *TmConfig) setOldPvHeight(height int64) {
 	nodes := util.GetChildDir(tm.oldPath)
 	for _, node := range nodes {
-		pvFile := tm.getFilePath(tm.oldPath, node, tm.privVal)
-		flagFile := tm.getFilePath(tm.oldPath, node, "."+tm.privVal)
-		if util.Exist(flagFile) {
-			continue
-		}
+		oGenFile := tm.getFilePath(tm.oldPath, node, tm.genesis)
+		oPvFile := tm.getFilePath(tm.oldPath, node, tm.privVal)
 
-		pfs := otp.LoadPrivValidator(pvFile)
-		pfs.LastHeight = height
-		pfs.LastStep = 3
-		pfs.Save()
+		oGen, _ := otp.MakeGenesisDocFromFile(oGenFile)
+		oPrivFS := otp.LoadPrivValidator(oPvFile)
+
+		oPrivFS.LastHeight = height
+		oPrivFS.LastRound = 0
+		oPrivFS.LastStep = 3
+		oPrivFS.Save()
+
+		store.AddNodePriv(oPrivFS.Address.String(), oGen.ChainID, nil, oPrivFS)
 	}
+	store.SortNodePriv()
 }
 
 func (tm *TmConfig) setNewPvHeight(height int64) {
 	nodes := util.GetChildDir(tm.newPath)
 	for _, node := range nodes {
-		pvFile := tm.getFilePath(tm.newPath, node, tm.privVal)
-		flagFile := tm.getFilePath(tm.newPath, node, "."+tm.privVal)
-		if util.Exist(flagFile) {
-			continue
-		}
+		nGenFile := tm.getFilePath(tm.newPath, node, tm.genesis)
+		nPvFile := tm.getFilePath(tm.newPath, node, tm.privVal)
 
-		fpv := privval.LoadFilePV(pvFile)
-		fpv.LastHeight = height
-		fpv.LastStep = 3
-		fpv.Save()
+		nGen, _ := state.MakeGenesisDocFromFile(nGenFile)
+		nPrivFS := privval.LoadFilePV(nPvFile)
+
+		nPrivFS.LastHeight = height
+		nPrivFS.LastRound = 0
+		nPrivFS.LastStep = 3
+		nPrivFS.Save()
+
+		store.AddNodePriv(nPrivFS.Address.String(), nGen.ChainID, nPrivFS, nil)
 	}
+	store.SortNodePriv()
 }
